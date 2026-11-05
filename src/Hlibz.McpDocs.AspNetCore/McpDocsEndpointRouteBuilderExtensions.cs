@@ -87,7 +87,9 @@ public static class McpDocsEndpointRouteBuilderExtensions
             .Replace("{{js}}", "_assets/app.js?v=" + assets.Files["app.js"].Version);
 
         var h = ctx.Response.Headers;
-        h.ContentSecurityPolicy = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+        // Ours is a default: an app with its own CSP middleware has already set the header, and wins.
+        if (!h.ContainsKey(HeaderNames.ContentSecurityPolicy))
+            h.ContentSecurityPolicy = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
         h.XContentTypeOptions = "nosniff";
         h["Referrer-Policy"] = "no-referrer";
         h.CacheControl = "no-cache";
