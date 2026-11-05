@@ -26,7 +26,7 @@ public static class McpDocsEndpointRouteBuilderExtensions
         configure?.Invoke(docs);
 
         var assets = Assets.Load();
-        var catalogs = new ConcurrentDictionary<string, McpDocsCatalog.Result>(); // keyed by PathBase
+        var catalogs = new ConcurrentDictionary<string, McpDocsCatalog>(); // keyed by PathBase
 
         var group = endpoints.MapGroup(pattern);
         var basePath = "/" + pattern.Trim('/');
@@ -38,16 +38,18 @@ public static class McpDocsEndpointRouteBuilderExtensions
                 : Results.Redirect(ctx.Request.PathBase + basePath + "/" + ctx.Request.QueryString)).ExecuteAsync(ctx))
             .ExcludeFromDescription(); // routing ignores the trailing slash, so this one route serves both forms
 
-        group.MapGet("/catalog.json", ctx =>
+        group.MapGet("/catalog.json", async ctx =>
         {
             var pathBase = ctx.Request.PathBase.Value ?? "";
             var catalog = catalogs.GetOrAdd(pathBase, pb =>
             {
                 var server = ctx.RequestServices.GetRequiredService<IOptions<McpServerOptions>>().Value;
                 var endpoint = docs.McpEndpoint.StartsWith('/') ? pb + docs.McpEndpoint : docs.McpEndpoint;
-                return McpDocsCatalog.Build(server, docs, endpoint);
+                return new McpDocsCatalog(server, docs, endpoint);
             });
-            return Cached(ctx, catalog.Json, "application/json; charset=utf-8", catalog.ETag, "no-cache").ExecuteAsync(ctx);
+            // Content depends on the viewer once anything is [Authorize]d: never let a shared cache keep it.
+            var result = await catalog.GetAsync(ctx);
+            await Cached(ctx, result.Json, "application/json; charset=utf-8", result.ETag, "private, no-cache").ExecuteAsync(ctx);
         }).ExcludeFromDescription();
 
         group.MapGet("/_assets/{file}", ctx =>

@@ -82,6 +82,7 @@
   var ICON_SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
   var ICON_MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
   var ICON_MENU = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
+  var ICON_LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 
   function isDark() {
     var t = root.getAttribute('data-theme');
@@ -294,9 +295,31 @@
     'Closed world': 'Works only within the server\u2019s own domain (openWorldHint: false)',
     'No annotations': 'The server does not describe this tool\u2019s side effects'
   };
-  function badgeRow(list) {
-    return el('div', { class: 'badges' }, list.map(function (b) { return el('span', { class: 'badge ' + b.cls, title: RISK_TITLES[b.text] || null, text: b.text }); }));
+  function badgeRow(list, extra) {
+    return el('div', { class: 'badges' }, extra, list.map(function (b) { return el('span', { class: 'badge ' + b.cls, title: RISK_TITLES[b.text] || null, text: b.text }); }));
   }
+
+  // ---------------------------------------------------------------- authorization
+  // entry.authorization is present only on [Authorize]d primitives the viewer is allowed to see.
+  // roles: inner array = any of, outer = all of (several [Authorize(Roles = …)]).
+  function authParts(a) {
+    var parts = [];
+    (a.policies || []).forEach(function (p) { parts.push('policy ' + p); });
+    (a.roles || []).forEach(function (set) { parts.push((set.length > 1 ? 'roles ' : 'role ') + set.join(' or ')); });
+    if (a.custom) parts.push('custom requirements');
+    return parts;
+  }
+  function authLabel(a) {
+    var names = (a.roles || []).map(function (set) { return set.join(' | '); }).concat(a.policies || []);
+    return names.length ? names.join(' · ') : a.custom ? 'Restricted' : 'Signed-in users';
+  }
+  function lockBadge(a) {
+    if (!a) return null;
+    var parts = authParts(a);
+    return el('span', { class: 'badge lock', title: 'Requires authorization' + (parts.length ? ': ' + parts.join('; ') : ' (any signed-in user)') + '. Shown because you have access.' },
+      el('span', { class: 'ic', html: ICON_LOCK }), authLabel(a));
+  }
+  function authSearch(a) { return a ? ['restricted', authLabel(a)].concat(authParts(a)).join(' ') : ''; }
 
   // ---------------------------------------------------------------- connect snippets
   function connectSnippets(cat) {
@@ -359,7 +382,7 @@
     var left = el('div', { class: 'l' },
       el('h3', { class: 'op-name' }, t.name, el('a', { class: 'anchor', href: '#tool/' + encodeURIComponent(t.name), 'aria-label': 'Link to ' + t.name, text: '#' })),
       title ? el('p', { class: 'op-title', text: title }) : null,
-      badgeRow(r.badges),
+      badgeRow(r.badges, lockBadge(entry.authorization)),
       mdEl('div', '', t.description),
       el('h4', null, 'Parameters'),
       schemaView(t.inputSchema),
@@ -376,12 +399,13 @@
     return el('section', { class: 'row', id: 'tool/' + t.name, 'data-nav': 'tool/' + t.name }, left, right);
   }
 
-  function promptSection(p) {
+  function promptSection(entry) {
+    var p = entry.definition;
     var args = p.arguments || [];
     var left = el('div', { class: 'l' },
       el('h3', { class: 'op-name' }, p.name, el('a', { class: 'anchor', href: '#prompt/' + encodeURIComponent(p.name), text: '#' })),
       p.title ? el('p', { class: 'op-title', text: p.title }) : null,
-      el('div', { class: 'badges' }, el('span', { class: 'badge plain', text: 'Prompt' })),
+      el('div', { class: 'badges' }, lockBadge(entry.authorization), el('span', { class: 'badge plain', text: 'Prompt' })),
       mdEl('div', '', p.description),
       el('h4', null, 'Arguments'),
       args.length ? el('div', { class: 'props' }, args.map(function (a) {
@@ -395,14 +419,15 @@
     return el('section', { class: 'row', id: 'prompt/' + p.name, 'data-nav': 'prompt/' + p.name }, left, right);
   }
 
-  function resourceSection(res, templated) {
+  function resourceSection(entry, templated) {
+    var res = entry.definition;
     var kind = templated ? 'template' : 'resource';
     var addr = templated ? res.uriTemplate : res.uri;
     var vars = templated ? (addr.match(/\{[^}]+\}/g) || []).map(function (v) { return v.replace(/[{}+#./;?&*]/g, ''); }) : [];
     var left = el('div', { class: 'l' },
       el('h3', { class: 'op-name' }, res.name, el('a', { class: 'anchor', href: '#' + kind + '/' + encodeURIComponent(res.name), text: '#' })),
       res.title ? el('p', { class: 'op-title', text: res.title }) : null,
-      el('div', { class: 'badges' }, el('span', { class: 'badge plain', text: templated ? 'Resource template' : 'Resource' }),
+      el('div', { class: 'badges' }, lockBadge(entry.authorization), el('span', { class: 'badge plain', text: templated ? 'Resource template' : 'Resource' }),
         res.mimeType ? el('span', { class: 'badge plain', text: res.mimeType }) : null),
       el('div', { class: 'endpoint' }, el('span', { class: 'tag', text: 'URI' }), el('code', { text: addr })),
       mdEl('div', '', res.description),
@@ -437,10 +462,11 @@
 
     // --- sidebar
     var navItems = [];
-    function navItem(id, name, kind, dot, searchText) {
-      var a = el('a', { class: 'nav-item', href: '#' + id, 'data-target': id, 'data-search': (name + ' ' + (searchText || '')).toLowerCase() },
+    function navItem(id, name, kind, dot, searchText, auth) {
+      var a = el('a', { class: 'nav-item', href: '#' + id, 'data-target': id, 'data-search': (name + ' ' + (searchText || '') + ' ' + authSearch(auth)).toLowerCase() },
         dot !== null ? el('span', { class: 'dot ' + (dot || '') }) : null,
         el('span', { class: 'nm', text: name, title: name }),
+        auth ? el('span', { class: 'lock', title: 'Restricted: ' + authLabel(auth), html: ICON_LOCK }) : null,
         kind ? el('span', { class: 'kind', text: kind }) : null);
       navItems.push(a);
       return a;
@@ -451,16 +477,16 @@
       el('div', { class: 'nav-label' }, el('span', { text: 'Tools' }), el('span', { text: String(tools.length) })),
       groups.map(function (g) {
         return el('div', { 'data-group': '' }, g.name ? el('div', { class: 'nav-group', text: g.name }) : null,
-          g.items.map(function (e) { var t = e.definition; return navItem('tool/' + t.name, t.name, null, risk(t).level, [t.title, t.description, g.name].join(' ')); }));
+          g.items.map(function (e) { var t = e.definition; return navItem('tool/' + t.name, t.name, null, risk(t).level, [t.title, t.description, g.name].join(' '), e.authorization); }));
       })));
     if (prompts.length) append(nav, el('div', { class: 'nav-section', 'data-section': '' },
       el('div', { class: 'nav-label' }, el('span', { text: 'Prompts' }), el('span', { text: String(prompts.length) })),
-      el('div', { 'data-group': '' }, prompts.map(function (p) { return navItem('prompt/' + p.name, p.name, null, null, [p.title, p.description].join(' ')); }))));
+      el('div', { 'data-group': '' }, prompts.map(function (e) { var p = e.definition; return navItem('prompt/' + p.name, p.name, null, null, [p.title, p.description].join(' '), e.authorization); }))));
     if (resources.length + templates.length) append(nav, el('div', { class: 'nav-section', 'data-section': '' },
       el('div', { class: 'nav-label' }, el('span', { text: 'Resources' }), el('span', { text: String(resources.length + templates.length) })),
       el('div', { 'data-group': '' },
-        resources.map(function (r) { return navItem('resource/' + r.name, r.name, null, null, [r.title, r.description, r.uri].join(' ')); }),
-        templates.map(function (r) { return navItem('template/' + r.name, r.name, '{ }', null, [r.title, r.description, r.uriTemplate].join(' ')); }))));
+        resources.map(function (e) { var r = e.definition; return navItem('resource/' + r.name, r.name, null, null, [r.title, r.description, r.uri].join(' '), e.authorization); }),
+        templates.map(function (e) { var r = e.definition; return navItem('template/' + r.name, r.name, '{ }', null, [r.title, r.description, r.uriTemplate].join(' '), e.authorization); }))));
     var empty = el('div', { class: 'nav-empty', text: 'No matches.', hidden: true });
     append(nav, empty);
 

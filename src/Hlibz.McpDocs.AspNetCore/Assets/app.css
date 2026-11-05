@@ -135,6 +135,12 @@ h3.group { font-size: 20px; margin: 0; }
 .badge.info { background: var(--info-bg); color: var(--info); }
 .badge.warn { background: var(--warn-bg); color: var(--warn); }
 .badge.plain { background: transparent; border-color: var(--border); }
+.badge.lock { display: inline-flex; align-items: center; gap: 4px; background: var(--accent-soft); color: var(--accent); }
+.badge .ic, .nav-item .lock { display: inline-flex; flex: none; }
+.badge .ic svg { width: 11px; height: 11px; }
+.nav-item .lock { color: var(--faint); }
+.nav-item .lock svg { width: 11px; height: 11px; }
+.nav-item.active .lock { color: var(--accent); }
 h4 { font-size: 12px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin: 28px 0 8px; font-weight: 600; }
 h4 small { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--faint); margin-left: 6px; }
 .none { color: var(--muted); font-size: 14px; }

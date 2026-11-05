@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Microsoft.AspNetCore.Authorization;
 using ModelContextProtocol.Server;
 
 namespace Sample.McpServer.Prompts;
@@ -17,4 +18,10 @@ public static class OrderPrompts
     [Description("Builds a weekly sales report prompt.")]
     public static string WeeklyReport() =>
         "Produce a weekly sales report using search_orders for the last 7 days.";
+
+    [McpServerPrompt(Name = "escalate_order", Title = "Escalate order")]
+    [Description("Drafts an escalation to the order team. Any signed-in user.")]
+    [Authorize]
+    public static string EscalateOrder([Description("Order id")] string orderId) =>
+        $"Draft an escalation for order {orderId}: what went wrong, what the customer was told, what we need.";
 }

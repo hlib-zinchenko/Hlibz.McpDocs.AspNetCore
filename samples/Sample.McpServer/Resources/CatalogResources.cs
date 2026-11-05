@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Microsoft.AspNetCore.Authorization;
 using ModelContextProtocol.Server;
 
 namespace Sample.McpServer.Resources;
@@ -13,4 +14,9 @@ public static class CatalogResources
     [McpServerResource(UriTemplate = "catalog://readme", Name = "catalog_readme", Title = "Catalog README", MimeType = "text/markdown")]
     [Description("Static description of the catalog.")]
     public static string Readme() => "# Catalog\nAll products sold by Acme.";
+
+    [McpServerResource(UriTemplate = "catalog://internal/costs", Name = "unit_costs", Title = "Unit costs", MimeType = "text/csv")]
+    [Description("Purchase cost per SKU. Finance only.")]
+    [Authorize(Policy = "Finance")]
+    public static string UnitCosts() => "sku,cost\nSKU-RED-MUG,4.10";
 }

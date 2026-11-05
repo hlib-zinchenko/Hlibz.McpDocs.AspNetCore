@@ -30,16 +30,39 @@ app.MapMcpDocs("/mcp-docs", o =>
 
 Group tools with `[McpDocsGroup("Orders")]` on the tool class or method.
 
+## Authorization
+
+`[Authorize]` on tools, prompts and resources is honoured the way the SDK's `AddAuthorizationFilters()` honours it
+for `tools/list` etc.: a viewer only sees the primitives their MCP client would see. Same rules — any
+`[AllowAnonymous]` on the class or method wins; otherwise `IAuthorizeData`, `AuthorizationPolicy` and
+`IAuthorizationRequirementData` metadata are combined into one policy and evaluated with `IAuthorizationService`
+against `HttpContext.User`. Gated primitives the viewer *can* see get a lock badge naming the roles / policies.
+
+Two differences from the MCP endpoint, both inherent to a page opened in a browser:
+
+- **Identity is the browser's.** The docs request is authenticated by whatever the app's default scheme sees on
+  it (usually a cookie), while MCP clients typically send a bearer token. If the browser isn't signed in, the page
+  shows the anonymous view.
+- **The authorization resource is the `HttpContext`**, not the SDK's MCP request context. Resource-based
+  handlers that look for the MCP context won't match here, and the primitive stays hidden.
+
+`catalog.json` is served `private, no-cache`; the ETag still hashes the content, so viewers with the same
+access share a cached build and get 304s.
+
+The sample signs in with a demo cookie: `/demo/sign-in?roles=admin,finance`, `/demo/sign-out`.
+
 ## Layout
 
 ```
 src/Hlibz.McpDocs.AspNetCore/
   McpDocsOptions.cs                          options, [McpDocsGroup], grouping strategies
-  McpDocsCatalog.cs                          catalog.json from McpServerOptions collections
+  McpDocsCatalog.cs                          catalog.json from McpServerOptions collections, per viewer
+  McpDocsAuthorization.cs                    [Authorize] evaluation, mirrors the SDK's list filters
   McpDocsEndpointRouteBuilderExtensions.cs   MapMcpDocs: page, catalog.json, _assets/*
   Assets/index.html, app.css, app.js         embedded UI (vanilla JS, no deps, no inline script)
-samples/Sample.McpServer/                    10 tools (incl. runtime-registered `ping`, recursive output,
-                                             dictionary input, polymorphic anyOf), 2 prompts, 1 resource, 1 template
+samples/Sample.McpServer/                    13 tools (incl. runtime-registered `ping`, recursive output,
+                                             dictionary input, polymorphic anyOf, [Authorize]d admin tools),
+                                             3 prompts, 2 resources, 1 template; demo cookie sign-in
 ```
 
 ## What the proof of concept answered
@@ -54,7 +77,7 @@ samples/Sample.McpServer/                    10 tools (incl. runtime-registered 
 - **Schema renderer is most of the UI work, and doable.** ~250 lines cover nested objects, arrays, maps
   (`additionalProperties`), `$ref` incl. the SDK's root-recursive `"$ref": "#"`, `anyOf`/`oneOf` variants,
   nullable via type arrays, enum/const/default/min/max/pattern chips, and example generation for the right panel.
-- **Serving:** `catalog.json` cached per `PathBase`, ETag = SHA-256 of content → 304s; assets
+- **Serving:** `catalog.json` cached per `PathBase` and set of visible primitives, ETag = SHA-256 of content → 304s; assets
   `immutable` with a content-hash `?v=`; page CSP `script-src 'self'; style-src 'self'` holds (nothing inline);
   `RequestDelegate` endpoints, so the library builds with `IsAotCompatible` and no trim warnings.
 
@@ -70,7 +93,8 @@ samples/Sample.McpServer/                    10 tools (incl. runtime-registered 
 
 ## Not done / open
 
-- Dynamic servers (custom `ListToolsHandler`, per-caller filtering) — page shows only what's registered.
+- Dynamic servers (custom `ListToolsHandler`, custom list filters) — page shows only what's registered,
+  filtered by `[Authorize]` only.
 - Tests (real Kestrel), multi-targeting net8/9, packaging.
 - Markdown is a small safe subset, not CommonMark.
 - Connect snippet formats are from memory — verify against current client docs before shipping.
