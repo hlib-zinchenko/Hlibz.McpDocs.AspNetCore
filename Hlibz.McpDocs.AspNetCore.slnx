@@ -5,4 +5,7 @@
   <Folder Name="/src/">
     <Project Path="src/Hlibz.McpDocs.AspNetCore/Hlibz.McpDocs.AspNetCore.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Hlibz.McpDocs.AspNetCore.Tests.csproj" />
+  </Folder>
 </Solution>

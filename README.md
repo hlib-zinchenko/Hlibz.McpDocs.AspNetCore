@@ -3,7 +3,13 @@
 A read-only, ReDoc-style documentation page for MCP servers hosted in ASP.NET Core.
 Shows what the server offers (tools, prompts, resources) and how to connect to it.
 
-> Status: proof of concept. Not published to NuGet yet.
+![The docs page for the sample server](https://raw.githubusercontent.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/main/docs/screenshot.jpg)
+
+> Status: early (0.1.0). Targets `net8.0`, which also runs in net9 and net10 apps.
+
+```bash
+dotnet add package Hlibz.McpDocs.AspNetCore
+```
 
 ```bash
 dotnet run --project samples/Sample.McpServer --launch-profile http
@@ -96,6 +102,18 @@ The sample signs in with a demo cookie: `/demo/sign-in?roles=admin,finance`, `/d
 - **Render full CommonMark.** Markdown is a small safe subset.
 - **Mark which arguments support completion.** The SDK has one `CompleteHandler`, nothing per argument.
 
+## Tests
+
+```bash
+dotnet test
+```
+
+`tests/` runs a real server on `TestServer`: it asserts that `catalog.json` equals what an MCP client gets from
+`tools/list`, `prompts/list`, `resources/list` and `resources/templates/list` (anonymous and signed in), the status
+codes anonymous callers get on protected docs, the CSP rules, option validation, `PathBase` handling and endpoint
+discovery. CI (`.github/workflows/ci.yml`) builds, tests and packs; a `v*` tag pushes to NuGet (needs a
+`NUGET_API_KEY` secret). Visual regression tests are not written.
+
 ## Layout
 
 ```
@@ -142,6 +160,6 @@ samples/Sample.McpServer/                    13 tools (incl. runtime-registered 
 
 ## Not done / open
 
-- Tests (real Kestrel), multi-targeting net8/9, packaging.
+- Visual regression tests (Playwright).
 - Markdown is a small safe subset, not CommonMark.
 - Connect snippet formats are from memory — verify against current client docs before shipping.
