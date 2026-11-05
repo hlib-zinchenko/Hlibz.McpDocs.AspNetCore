@@ -30,6 +30,12 @@ public sealed class McpDocsOptions
     public string? AuthHint { get; set; }
 
     /// <summary>
+    /// Show each primitive's <c>_meta</c> on the page. Off by default: it is often implementation detail,
+    /// and when off it is also left out of <c>catalog.json</c>.
+    /// </summary>
+    public bool ShowMeta { get; set; }
+
+    /// <summary>
     /// Assigns a sidebar group to each tool; <c>null</c> = ungrouped.
     /// Defaults to <see cref="McpDocsGrouping.ByAttribute"/> (reads <see cref="McpDocsGroupAttribute"/>).
     /// </summary>

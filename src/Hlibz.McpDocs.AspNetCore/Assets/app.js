@@ -375,6 +375,11 @@
   // ---------------------------------------------------------------- sections
   function rpc(method, params) { return JSON.stringify({ jsonrpc: '2.0', id: 1, method: method, params: params }, null, 2); }
 
+  function tokenBadge(t) {
+    var n = toolTokens(t);
+    return el('span', { class: 'badge ' + (n >= HEAVY_TOKENS ? 'warn' : 'plain'), title: 'Estimated size of this tool\u2019s definition in the model\u2019s context (name, description, input schema; about 4 characters per token)', text: '~' + fmtTokens(n) + ' tokens' });
+  }
+
   function toolSection(entry) {
     var t = entry.definition;
     var r = risk(t);
@@ -382,11 +387,12 @@
     var left = el('div', { class: 'l' },
       el('h3', { class: 'op-name' }, t.name, el('a', { class: 'anchor', href: '#tool/' + encodeURIComponent(t.name), 'aria-label': 'Link to ' + t.name, text: '#' })),
       title ? el('p', { class: 'op-title', text: title }) : null,
-      badgeRow(r.badges, lockBadge(entry.authorization)),
+      badgeRow(r.badges, [lockBadge(entry.authorization), tokenBadge(t)]),
       mdEl('div', '', t.description),
       el('h4', null, 'Parameters'),
       schemaView(t.inputSchema),
-      t.outputSchema ? [el('h4', null, 'Result', el('small', { text: 'structuredContent' })), schemaView(t.outputSchema)] : null);
+      t.outputSchema ? [el('h4', null, 'Result', el('small', { text: 'structuredContent' })), schemaView(t.outputSchema)] : null,
+      metaBlock(t, SHOW_META));
 
     var args = example(t.inputSchema || {}, t.inputSchema || {}, 0, ['Root']);
     var right = el('div', { class: 'r' }, panelBlock('Request', rpc('tools/call', { name: t.name, arguments: args || {} }), true));
@@ -413,7 +419,8 @@
           el('div', { class: 'prop-head' }, el('span', { class: 'prop-name', text: a.name }), el('span', { class: 'prop-type', text: 'string' }),
             a.required ? el('span', { class: 'req', text: 'required' }) : null),
           mdEl('div', 'prop-desc', a.description));
-      })) : el('p', { class: 'none', text: 'No arguments.' }));
+      })) : el('p', { class: 'none', text: 'No arguments.' }),
+      metaBlock(p, SHOW_META));
     var ex = {}; args.forEach(function (a) { ex[a.name] = 'string'; });
     var right = el('div', { class: 'r' }, panelBlock('Request', rpc('prompts/get', { name: p.name, arguments: ex }), true));
     return el('section', { class: 'row', id: 'prompt/' + p.name, 'data-nav': 'prompt/' + p.name }, left, right);
@@ -431,12 +438,37 @@
         res.mimeType ? el('span', { class: 'badge plain', text: res.mimeType }) : null),
       el('div', { class: 'endpoint' }, el('span', { class: 'tag', text: 'URI' }), el('code', { text: addr })),
       mdEl('div', '', res.description),
+      annotationRows(res).length ? el('dl', { class: 'facts' }, annotationRows(res).map(function (r) { return [el('dt', { text: r[0] }), el('dd', { text: r[1] })]; })) : null,
       vars.length ? [el('h4', null, 'Variables'), el('div', { class: 'props' }, vars.map(function (v) {
         return el('div', { class: 'prop' }, el('div', { class: 'prop-head' }, el('span', { class: 'prop-name', text: v }), el('span', { class: 'prop-type', text: 'string' }), el('span', { class: 'req', text: 'required' })));
-      }))] : null);
+      }))] : null,
+      metaBlock(res, SHOW_META));
     var sampleUri = templated ? addr.replace(/\{[^}]+\}/g, function (m) { return m.replace(/[{}+#./;?&*]/g, '') === '' ? '' : 'example'; }) : addr;
     var right = el('div', { class: 'r' }, panelBlock('Request', rpc('resources/read', { uri: sampleUri }), true));
     return el('section', { class: 'row', id: kind + '/' + res.name, 'data-nav': kind + '/' + res.name }, left, right);
+  }
+
+  // Rough cost of a tool in a model's context: name, description and input schema, ~4 characters per token.
+  // An estimate (real tokenizers differ, clients send somewhat different fields), shown as such.
+  function toolTokens(t) {
+    return Math.ceil(JSON.stringify({ name: t.name, description: t.description, inputSchema: t.inputSchema }).length / 4);
+  }
+  function fmtTokens(n) { return n >= 10000 ? Math.round(n / 1000) + 'k' : n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n); }
+  var HEAVY_TOKENS = 1000;
+
+  function metaBlock(def, show) {
+    if (!show || !def._meta || typeof def._meta !== 'object' || !Object.keys(def._meta).length) return null;
+    return [el('h4', null, 'Metadata', el('small', { text: '_meta' })), codeBlock(JSON.stringify(def._meta, null, 2), true)];
+  }
+
+  function fmtBytes(n) { return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1).replace(/\.0$/, '') + ' KB' : (n / 1048576).toFixed(1).replace(/\.0$/, '') + ' MB'; }
+  function annotationRows(res) {
+    var a = res.annotations || {}, rows = [];
+    if (Array.isArray(a.audience) && a.audience.length) rows.push(['Audience', a.audience.join(', ')]);
+    if (typeof a.priority === 'number') rows.push(['Priority', String(a.priority)]);
+    if (a.lastModified) { var dt = new Date(a.lastModified); rows.push(['Modified', isNaN(dt) ? String(a.lastModified) : dt.toLocaleString()]); }
+    if (typeof res.size === 'number') rows.push(['Size', fmtBytes(res.size)]);
+    return rows;
   }
 
   function heading(id, label, count) {
@@ -467,11 +499,20 @@
     return src ? el('img', { class: 'mcp-icon ' + (cls || ''), src: src, alt: '', width: 16, height: 16, loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' }) : null;
   }
 
+  var SHOW_META = false;
+  function capChips(c) {
+    if (!c) return null;
+    var chips = [];
+    if (c.completions) chips.push(['Completions', 'completion/complete for prompt arguments and resource templates']);
+    if (c.subscribe) chips.push(['Subscriptions', 'Clients can subscribe to resource updates']);
+    return chips.length ? el('div', { class: 'badges caps' }, chips.map(function (x) { return el('span', { class: 'badge plain', title: x[1], text: x[0] }); })) : null;
+  }
   function render(app, cat) {
     var server = cat.server || {};
     var d = cat.docs || {};
     var tools = cat.tools || [], prompts = cat.prompts || [], resources = cat.resources || [], templates = cat.resourceTemplates || [];
     var groups = groupTools(tools);
+    SHOW_META = d.showMeta === true;
     var title = d.title || server.title || server.name || 'MCP server';
     document.title = title;
     var fav = iconUrl(server.icons);
@@ -556,6 +597,10 @@
         server.version ? el('span', null, 'Version ', el('b', { text: server.version })) : null,
         server.name && server.name !== title ? el('span', null, 'Server ', el('b', { text: server.name })) : null,
         counts.length ? el('span', { text: counts.join(' · ') }) : null),
+      capChips(cat.capabilities),
+      tools.length ? el('p', { class: 'cost', title: 'Name, description and input schema of every tool, about 4 characters per token. An estimate.' },
+        'Context cost: all tools together are about ', el('b', { text: '~' + fmtTokens(tools.reduce(function (n, e) { return n + toolTokens(e.definition); }, 0)) + ' tokens' }),
+        ' in every conversation that enables them.') : null,
       mdEl('div', '', d.description || server.description),
       d.description && cat.instructions ? el('div', { class: 'callout' }, el('span', { class: 'lbl', text: 'Instructions for the model' }), mdEl('div', '', cat.instructions)) : null,
       !d.description && !server.description ? mdEl('div', '', cat.instructions) : null,

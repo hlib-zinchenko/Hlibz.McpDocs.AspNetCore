@@ -24,6 +24,7 @@ app.MapMcpDocs("/mcp-docs", o =>
     o.AuthHeader = "Authorization";    // optional: adds the header to the snippets
     o.AuthHint = "Where to get a token.";
     o.ToolGroup = McpDocsGrouping.ByAttribute;  // default; or ByNamePrefix, None, or your own func
+    o.ShowMeta = false;                         // true: show each primitive's _meta (also in catalog.json)
 })
 .RequireAuthorization();               // RouteGroupBuilder: covers page, catalog.json and assets
 ```

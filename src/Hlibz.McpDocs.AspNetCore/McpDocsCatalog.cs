@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
 using Microsoft.AspNetCore.Http;
 using ModelContextProtocol;
@@ -100,7 +101,10 @@ internal sealed class McpDocsCatalog
             WriteString(w, "instructions", _server.ServerInstructions);
             WriteString(w, "protocolVersion", _server.ProtocolVersion);
 
+            WriteCapabilities(w);
+
             w.WriteStartObject("docs");
+            w.WriteBoolean("showMeta", _docs.ShowMeta);
             WriteString(w, "title", _docs.Title ?? info?.Title ?? serverName);
             WriteString(w, "description", _docs.Description);
             WriteString(w, "mcpEndpoint", _endpoint);
@@ -124,16 +128,16 @@ internal sealed class McpDocsCatalog
                     switch (item.Primitive)
                     {
                         case McpServerTool t:
-                            JsonSerializer.Serialize(w, t.ProtocolTool, toolInfo);
+                            WriteDefinition(w, t.ProtocolTool, toolInfo);
                             break;
                         case McpServerPrompt p:
-                            JsonSerializer.Serialize(w, p.ProtocolPrompt, promptInfo);
+                            WriteDefinition(w, p.ProtocolPrompt, promptInfo);
                             break;
                         case McpServerResource r when kind == Kind.Resource:
-                            JsonSerializer.Serialize(w, r.ProtocolResource!, resourceInfo);
+                            WriteDefinition(w, r.ProtocolResource!, resourceInfo);
                             break;
                         case McpServerResource r:
-                            JsonSerializer.Serialize(w, r.ProtocolResourceTemplate, templateInfo);
+                            WriteDefinition(w, r.ProtocolResourceTemplate, templateInfo);
                             break;
                     }
                     if (item.Primitive is McpServerTool tool) WriteString(w, "group", _docs.ToolGroup(tool));
@@ -153,6 +157,31 @@ internal sealed class McpDocsCatalog
 
         var bytes = ms.ToArray();
         return new Result(bytes, ETagOf(bytes));
+    }
+
+    // Streamed straight through unless _meta has to go: then via a node, so the rest stays what the SDK serialized.
+    private void WriteDefinition<T>(Utf8JsonWriter w, T value, JsonTypeInfo<T> info)
+    {
+        if (_docs.ShowMeta) { JsonSerializer.Serialize(w, value, info); return; }
+        var node = JsonSerializer.SerializeToNode(value, info);
+        node?.AsObject().Remove("_meta");
+        if (node is null) w.WriteNullValue(); else node.WriteTo(w);
+    }
+
+    /// <summary>
+    /// Capabilities that are visible from the options: explicit <see cref="McpServerOptions.Capabilities"/> and
+    /// handlers, which the SDK advertises as configured. Not shown, on purpose: <c>logging</c> (the SDK reports it
+    /// without configuration) and <c>listChanged</c> (the SDK decides it per session, and dropped it when a
+    /// value was set), since a chip here could contradict what <c>initialize</c> returns.
+    /// </summary>
+    private void WriteCapabilities(Utf8JsonWriter w)
+    {
+        var c = _server.Capabilities;
+        var h = _server.Handlers;
+        w.WriteStartObject("capabilities");
+        w.WriteBoolean("completions", c?.Completions is not null || h?.CompleteHandler is not null);
+        w.WriteBoolean("subscribe", c?.Resources?.Subscribe == true || h?.SubscribeToResourcesHandler is not null);
+        w.WriteEndObject();
     }
 
     public static string ETagOf(ReadOnlySpan<byte> bytes) =>

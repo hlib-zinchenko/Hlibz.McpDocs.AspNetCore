@@ -28,7 +28,7 @@ builder.Services
     })
     .WithHttpTransport()
     .WithToolsFromAssembly()
-    .WithTools([McpServerTool.Create(LambdaStyleTools.Ping, new() { Name = "ping", Title = "Ping (runtime-registered)", ReadOnly = true })])
+    .WithTools([McpServerTool.Create(LambdaStyleTools.Ping, new() { Name = "ping", Title = "Ping (runtime-registered)", ReadOnly = true, Meta = new System.Text.Json.Nodes.JsonObject { ["owner"] = "platform-team" } })])
     .WithPromptsFromAssembly()
     .WithResourcesFromAssembly()
     .AddAuthorizationFilters(); // hides [Authorize]d primitives from tools/list etc. — the docs page applies the same rules
