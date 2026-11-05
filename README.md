@@ -20,7 +20,7 @@ app.MapMcp("/mcp");
 app.MapMcpDocs("/mcp-docs", o =>
 {
     o.Description = "What this server is for, **Markdown** subset.";
-    o.McpEndpoint = "/mcp";            // used in the connect snippets
+    // o.McpEndpoint = "/mcp";         // optional: found from MapMcp; a path that matches no route stops startup
     o.AuthHeader = "Authorization";    // optional: adds the header to the snippets
     o.AuthHint = "Where to get a token.";
     o.ToolGroup = McpDocsGrouping.ByAttribute;  // default; or ByNamePrefix, None, or your own func

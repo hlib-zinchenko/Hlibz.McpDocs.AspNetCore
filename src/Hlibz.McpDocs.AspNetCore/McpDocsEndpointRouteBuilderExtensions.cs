@@ -6,6 +6,8 @@ using Hlibz.McpDocs.AspNetCore;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
 using ModelContextProtocol.Server;
@@ -31,6 +33,20 @@ public static class McpDocsEndpointRouteBuilderExtensions
         var group = endpoints.MapGroup(pattern);
         var basePath = "/" + pattern.Trim('/');
 
+        // Endpoints are only complete once the app has built its pipeline, so check when it starts.
+        var services = endpoints.ServiceProvider;
+        var lifetime = services.GetRequiredService<IHostApplicationLifetime>();
+        lifetime.ApplicationStarted.Register(() =>
+        {
+            var log = services.GetRequiredService<ILoggerFactory>().CreateLogger("Hlibz.McpDocs.AspNetCore");
+            var check = McpDocsEndpointDiscovery.Resolve(services, docs, basePath);
+            foreach (var w in check.Warnings) log.LogWarning("{Message}", w);
+            if (check.Errors.Count == 0) return;
+            foreach (var e in check.Errors) log.LogCritical("{Message}", e);
+            Environment.ExitCode = 1;
+            lifetime.StopApplication();
+        });
+
         // "/mcp-docs" → "/mcp-docs/" so relative asset URLs resolve.
         group.MapGet("", ctx =>
             (ctx.Request.Path.Value!.EndsWith('/')
@@ -44,7 +60,8 @@ public static class McpDocsEndpointRouteBuilderExtensions
             var catalog = catalogs.GetOrAdd(pathBase, pb =>
             {
                 var server = ctx.RequestServices.GetRequiredService<IOptions<McpServerOptions>>().Value;
-                var endpoint = docs.McpEndpoint.StartsWith('/') ? pb + docs.McpEndpoint : docs.McpEndpoint;
+                var found = McpDocsEndpointDiscovery.Resolve(ctx.RequestServices, docs, basePath).Endpoint;
+                var endpoint = found.StartsWith('/') ? pb + found : found;
                 return new McpDocsCatalog(server, docs, endpoint);
             });
             // Content depends on the viewer once anything is [Authorize]d: never let a shared cache keep it.

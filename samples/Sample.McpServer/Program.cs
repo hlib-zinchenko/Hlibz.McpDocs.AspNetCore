@@ -40,7 +40,6 @@ app.MapMcpDocs("/mcp-docs", o =>
 {
     o.Description = "Look up, create and cancel **Acme** orders from any MCP client. Read-only tools are safe to enable for everyone; " +
                     "destructive ones need the `orders:write` scope.";
-    o.McpEndpoint = "/mcp";
     o.AuthHeader = "Authorization";
     o.AuthHint = "Ask in [#acme-integrations](https://example.com/slack) for a personal access token.";
 });

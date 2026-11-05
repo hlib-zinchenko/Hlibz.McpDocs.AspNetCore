@@ -11,8 +11,11 @@ public sealed class McpDocsOptions
     /// <summary>Intro shown under the title. Markdown subset. Defaults to the server instructions.</summary>
     public string? Description { get; set; }
 
-    /// <summary>Path of the MCP endpoint (as passed to <c>MapMcp</c>), or an absolute URL. Used in the connect snippets.</summary>
-    public string McpEndpoint { get; set; } = "/mcp";
+    /// <summary>
+    /// Path of the MCP endpoint (as passed to <c>MapMcp</c>), or an absolute URL. Used in the connect snippets.
+    /// Defaults to the route <c>MapMcp</c> mapped. A path that matches no mapped route stops the app at startup.
+    /// </summary>
+    public string? McpEndpoint { get; set; }
 
     /// <summary>Server key used in the generated client configs, e.g. <c>"acme-orders"</c>. Defaults to the server name.</summary>
     public string? ServerKey { get; set; }
