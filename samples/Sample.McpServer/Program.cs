@@ -43,6 +43,8 @@ app.MapMcpDocs("/mcp-docs", o =>
                     "destructive ones need the `orders:write` scope.";
     o.AuthHeader = "Authorization";
     o.AuthHint = "Ask in [#acme-integrations](https://example.com/slack) for a personal access token.";
+    o.AddToolbarItem("Changelog", "https://example.com/changelog");
+    // o.DefaultColorMode = McpDocsColorMode.Dark; o.DarkPreset = McpDocsDarkPreset.Nord; o.PrimaryColor = "#0a7f5a";
 });
 // .RequireAuthorization();   // the returned route group covers page, catalog.json and assets
 

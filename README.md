@@ -25,6 +25,13 @@ app.MapMcpDocs("/mcp-docs", o =>
     o.AuthHint = "Where to get a token.";
     o.ToolGroup = McpDocsGrouping.ByAttribute;  // default; or ByNamePrefix, None, or your own func
     o.ShowMeta = false;                         // true: show each primitive's _meta (also in catalog.json)
+    o.DefaultColorMode = McpDocsColorMode.System;   // first-time viewers: System, Light or Dark
+    o.PrimaryColor = "#0a7f5a";                     // validated: hex, rgb(), hsl() or a colour name
+    o.DarkModePrimaryColor = "#4fc99a";
+    o.DarkPreset = McpDocsDarkPreset.Nord;          // Default, Midnight, Nord, GitHubDark
+    o.AdditionalCss = "h1 { letter-spacing: -.01em; }";  // served as _assets/theme.css, CSP stays strict
+    o.Favicon = "~/favicon.ico";                    // https:, data:image/ or a path; default: the server icon
+    o.AddToolbarItem("Changelog", "https://example.com/changelog");  // "~/x" resolves against PathBase
 })
 .RequireAuthorization();               // RouteGroupBuilder: covers page, catalog.json and assets
 ```

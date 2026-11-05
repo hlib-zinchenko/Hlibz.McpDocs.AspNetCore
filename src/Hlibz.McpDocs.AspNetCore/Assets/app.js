@@ -507,6 +507,16 @@
     if (c.subscribe) chips.push(['Subscriptions', 'Clients can subscribe to resource updates']);
     return chips.length ? el('div', { class: 'badges caps' }, chips.map(function (x) { return el('span', { class: 'badge plain', title: x[1], text: x[0] }); })) : null;
   }
+  // Links from AddToolbarItem, plus the server's website. Only http(s) or same-site paths become links.
+  function toolbar(server, d) {
+    var links = (d.links || []).slice();
+    if (typeof server.websiteUrl === 'string' && /^https?:\/\//i.test(server.websiteUrl)) links.unshift({ label: 'Website', url: server.websiteUrl, newTab: true });
+    links = links.filter(function (l) { return l && typeof l.url === 'string' && /^(https?:\/\/|\/(?!\/))/i.test(l.url); });
+    if (!links.length) return null;
+    return el('nav', { class: 'toolbar', 'aria-label': 'Links' }, links.map(function (l) {
+      return el('a', l.newTab ? { href: l.url, target: '_blank', rel: 'noopener noreferrer', text: l.label } : { href: l.url, text: l.label });
+    }));
+  }
   function render(app, cat) {
     var server = cat.server || {};
     var d = cat.docs || {};
@@ -515,7 +525,7 @@
     SHOW_META = d.showMeta === true;
     var title = d.title || server.title || server.name || 'MCP server';
     document.title = title;
-    var fav = iconUrl(server.icons);
+    var fav = (typeof d.favicon === 'string' && d.favicon) || iconUrl(server.icons);
     if (fav) {
       var link = document.querySelector('link[rel~="icon"]') || document.head.appendChild(el('link', { rel: 'icon' }));
       link.setAttribute('href', fav);
@@ -580,6 +590,7 @@
       el('div', { class: 'side-head' },
         el('div', { class: 'side-title' }, el('strong', { text: title }), server.version ? el('span', { text: 'v' + server.version }) : null),
         themeBtn),
+      toolbar(server, d),
       el('div', { class: 'search' }, search, el('kbd', { text: '/' })),
       nav,
       el('div', { class: 'side-foot' }, el('a', { href: 'catalog.json', text: 'catalog.json' }), ' · read-only docs'));
@@ -606,8 +617,7 @@
       !d.description && !server.description ? mdEl('div', '', cat.instructions) : null,
       el('div', { class: 'endpoint' }, el('span', { class: 'tag', text: 'HTTP' }), el('code', { text: endpointUrl }), copyButton(function () { return endpointUrl; })),
       el('p', { class: 'none' }, 'Transport: Streamable HTTP.' + (d.authHeader ? ' Requires the ' : ''), d.authHeader ? el('code', { text: d.authHeader }) : null, d.authHeader ? ' header.' : ''),
-      d.authHint ? el('div', { class: 'callout' }, el('span', { class: 'lbl', text: 'Authentication' }), mdEl('div', '', d.authHint)) : null,
-      server.websiteUrl ? el('p', null, el('a', { href: server.websiteUrl, rel: 'noopener noreferrer', target: '_blank', text: server.websiteUrl })) : null);
+      d.authHint ? el('div', { class: 'callout' }, el('span', { class: 'lbl', text: 'Authentication' }), mdEl('div', '', d.authHint)) : null);
     var overview = el('section', { class: 'row', id: 'overview', 'data-nav': 'overview' }, overviewLeft, el('div', { class: 'r' }, connectPanel(cat)));
 
     var main = el('main', { class: 'content' }, overview);

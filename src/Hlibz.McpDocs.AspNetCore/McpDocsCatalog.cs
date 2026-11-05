@@ -35,12 +35,14 @@ internal sealed class McpDocsCatalog
     private readonly McpServerOptions _server;
     private readonly McpDocsOptions _docs;
     private readonly string _endpoint;
+    private readonly string _pathBase;
     private readonly Item[] _items;
     private readonly int[] _gated; // indexes into _items
     private readonly ConcurrentDictionary<string, Result> _results = new(StringComparer.Ordinal);
 
-    public McpDocsCatalog(McpServerOptions server, McpDocsOptions docs, string resolvedEndpoint)
+    public McpDocsCatalog(McpServerOptions server, McpDocsOptions docs, string resolvedEndpoint, string pathBase = "")
     {
+        _pathBase = pathBase;
         _server = server;
         _docs = docs;
         _endpoint = resolvedEndpoint;
@@ -112,6 +114,17 @@ internal sealed class McpDocsCatalog
             WriteString(w, "authHeader", _docs.AuthHeader);
             WriteString(w, "authPlaceholder", _docs.AuthHeader is null ? null : _docs.AuthPlaceholder);
             WriteString(w, "authHint", _docs.AuthHint);
+            WriteString(w, "favicon", _docs.Favicon is null ? null : McpDocsTheme.Resolve(_docs.Favicon, _pathBase));
+            w.WriteStartArray("links");
+            foreach (var l in _docs.ToolbarItems)
+            {
+                w.WriteStartObject();
+                w.WriteString("label", l.Label);
+                w.WriteString("url", McpDocsTheme.Resolve(l.Url, _pathBase));
+                w.WriteBoolean("newTab", l.NewTab);
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
             w.WriteEndObject();
 
             // Every entry: { group? (tools only), definition, authorization? }

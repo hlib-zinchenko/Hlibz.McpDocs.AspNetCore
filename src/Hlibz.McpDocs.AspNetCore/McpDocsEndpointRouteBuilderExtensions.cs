@@ -26,8 +26,9 @@ public static class McpDocsEndpointRouteBuilderExtensions
     {
         var docs = new McpDocsOptions();
         configure?.Invoke(docs);
+        docs.Validate();
 
-        var assets = Assets.Load();
+        var assets = Assets.Load(Encoding.UTF8.GetBytes(McpDocsTheme.Build(docs)));
         var catalogs = new ConcurrentDictionary<string, McpDocsCatalog>(); // keyed by PathBase
 
         var group = endpoints.MapGroup(pattern);
@@ -62,7 +63,7 @@ public static class McpDocsEndpointRouteBuilderExtensions
                 var server = ctx.RequestServices.GetRequiredService<IOptions<McpServerOptions>>().Value;
                 var found = McpDocsEndpointDiscovery.Resolve(ctx.RequestServices, docs, basePath).Endpoint;
                 var endpoint = found.StartsWith('/') ? pb + found : found;
-                return new McpDocsCatalog(server, docs, endpoint);
+                return new McpDocsCatalog(server, docs, endpoint, pb);
             });
             // Content depends on the viewer once anything is [Authorize]d: never let a shared cache keep it.
             var result = await catalog.GetAsync(ctx);
@@ -83,6 +84,8 @@ public static class McpDocsEndpointRouteBuilderExtensions
         var title = WebUtility.HtmlEncode(docs.Title ?? ctx.RequestServices.GetService<IOptions<McpServerOptions>>()?.Value.ServerInfo?.Title ?? "MCP server");
         var html = assets.PageTemplate
             .Replace("{{title}}", title)
+            .Replace("{{mode}}", docs.DefaultColorMode switch { McpDocsColorMode.Light => " data-theme=\"light\"", McpDocsColorMode.Dark => " data-theme=\"dark\"", _ => "" })
+            .Replace("{{theme}}", assets.Files.TryGetValue("theme.css", out var theme) ? $"<link rel=\"stylesheet\" href=\"_assets/theme.css?v={theme.Version}\">" : "")
             .Replace("{{css}}", "_assets/app.css?v=" + assets.Files["app.css"].Version)
             .Replace("{{js}}", "_assets/app.js?v=" + assets.Files["app.js"].Version);
 
@@ -114,21 +117,19 @@ public static class McpDocsEndpointRouteBuilderExtensions
         public required string PageTemplate { get; init; }
         public required Dictionary<string, Asset> Files { get; init; }
 
-        private static Assets? _cached;
-
-        public static Assets Load() => _cached ??= new Assets
+        public static Assets Load(byte[] theme)
         {
-            PageTemplate = Encoding.UTF8.GetString(Read("index.html")),
-            Files = new()
+            var files = new Dictionary<string, Asset>
             {
-                ["app.css"] = Make("app.css", "text/css; charset=utf-8"),
-                ["app.js"] = Make("app.js", "text/javascript; charset=utf-8"),
-            },
-        };
+                ["app.css"] = Make(Read("app.css"), "text/css; charset=utf-8"),
+                ["app.js"] = Make(Read("app.js"), "text/javascript; charset=utf-8"),
+            };
+            if (theme.Length > 0) files["theme.css"] = Make(theme, "text/css; charset=utf-8");
+            return new Assets { PageTemplate = Encoding.UTF8.GetString(Read("index.html")), Files = files };
+        }
 
-        private static Asset Make(string name, string type)
+        private static Asset Make(byte[] bytes, string type)
         {
-            var bytes = Read(name);
             var etag = McpDocsCatalog.ETagOf(bytes);
             return new Asset(bytes, type, etag, etag.Trim('"')[..10]);
         }

@@ -72,6 +72,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .icon-btn:hover { color: var(--text); }
 .icon-btn svg { width: 16px; height: 16px; }
 
+.toolbar { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 18px 10px; font-size: 13px; }
 .search { margin: 0 14px 10px; position: relative; }
 .search input {
   width: 100%; padding: 7px 30px 7px 10px; border-radius: 7px; border: 1px solid var(--border);
