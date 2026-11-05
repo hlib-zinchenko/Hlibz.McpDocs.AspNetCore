@@ -20,24 +20,38 @@ app.MapMcp("/mcp");
 app.MapMcpDocs("/mcp-docs", o =>
 {
     o.Description = "What this server is for, **Markdown** subset.";
-    // o.McpEndpoint = "/mcp";         // optional: found from MapMcp; a path that matches no route stops startup
     o.AuthHeader = "Authorization";    // optional: adds the header to the snippets
     o.AuthHint = "Where to get a token.";
-    o.ToolGroup = McpDocsGrouping.ByAttribute;  // default; or ByNamePrefix, None, or your own func
-    o.ShowMeta = false;                         // true: show each primitive's _meta (also in catalog.json)
-    o.CheckDescriptions = true;                     // default: flag missing descriptions/annotations on the page and in the startup log
-    o.DefaultColorMode = McpDocsColorMode.System;   // first-time viewers: System, Light or Dark
-    o.PrimaryColor = "#0a7f5a";                     // validated: hex, rgb(), hsl() or a colour name
-    o.DarkModePrimaryColor = "#4fc99a";
-    o.DarkPreset = McpDocsDarkPreset.Nord;          // Default, Midnight, Nord, GitHubDark
-    o.AdditionalCss = "h1 { letter-spacing: -.01em; }";  // served as _assets/theme.css, CSP stays strict
-    o.Favicon = "~/favicon.ico";                    // https:, data:image/ or a path; default: the server icon
-    o.AddToolbarItem("Changelog", "https://example.com/changelog");  // "~/x" resolves against PathBase
 })
 .RequireAuthorization();               // RouteGroupBuilder: covers page, catalog.json and assets
 ```
 
 Group tools with `[McpDocsGroup("Orders")]` on the tool class or method.
+
+## Options
+
+All optional. Set them in the `MapMcpDocs` callback.
+
+| Option | Default | What it does |
+|---|---|---|
+| `Title` | server title or name | Page title. |
+| `Description` | server instructions | Intro under the title (Markdown subset). |
+| `McpEndpoint` | found from `MapMcp` | Path or absolute URL used in the connect snippets. A path that matches no mapped route stops startup. |
+| `ServerKey` | server name | Key in the generated client configs, e.g. `acme-orders`. |
+| `AuthHeader` | none | Adds this header, with `AuthPlaceholder`, to the snippets. |
+| `AuthPlaceholder` | `Bearer <token>` | Placeholder value for `AuthHeader`. |
+| `AuthHint` | none | How to get credentials (Markdown subset). |
+| `ToolGroup` | `McpDocsGrouping.ByAttribute` | Sidebar group per tool; also `ByNamePrefix`, `None`, or your own function. |
+| `ShowMeta` | `false` | Show each primitive's `_meta`; when off it is also left out of `catalog.json`. |
+| `CheckDescriptions` | `true` | Flag missing descriptions and annotations on the page and as startup warnings. |
+| `DefaultColorMode` | `System` | Colour mode for first-time viewers (`System`, `Light`, `Dark`). |
+| `PrimaryColor` | built-in | Accent colour: hex, `rgb()`, `hsl()` or a name. Validated at startup. |
+| `DarkModePrimaryColor` | `PrimaryColor` | Accent colour in dark mode. |
+| `DarkPreset` | `Default` | `Midnight`, `Nord` or `GitHubDark`. |
+| `AdditionalCss` | none | Appended after the built-in CSS, served as `_assets/theme.css`. |
+| `Favicon` | server icon | `https:` URL, `data:image/` URI or path (`~/` = `PathBase`). |
+| `AddToolbarItem(label, url, newTab)` | none | Link in the sidebar; `http(s)://`, `/path` or `~/path`. |
+| `PrintStyles` | `true` | Print light and plain, without the sidebar. |
 
 ## Authorization
 
@@ -60,6 +74,28 @@ access share a cached build and get 304s.
 
 The sample signs in with a demo cookie: `/demo/sign-in?roles=admin,finance`, `/demo/sign-out`.
 
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| App exits at startup, critical log about `McpEndpoint` | The configured path matches no `MapMcp` route. | Fix the path, or remove `McpEndpoint` to use the discovered one. |
+| Warning: MCP endpoint requires authorization but the docs page doesn't | The page publishes the whole surface to anyone. | Add `.RequireAuthorization()` to `MapMcpDocs`, or accept it. |
+| Page shows fewer tools than `tools/list` | `[Authorize]` filtering uses the browser's identity (usually a cookie), not your MCP token; or the server uses a custom `ListToolsHandler`. | Sign in in the browser; custom handlers aren't visible to the page. |
+| Connect snippets show the wrong URL behind a proxy | `PathBase` or host differs from what the browser sees. | Set `McpEndpoint` to the public URL. |
+| Page is blank, console shows CSP errors | Your own CSP header replaced ours (an existing one is never overwritten). | Allow `script-src 'self'; style-src 'self'; img-src 'self' data: https:` for the docs path. |
+| Icon doesn't show | Only `https:` and `data:image/` icons are used. | Serve the icon over https or inline it. |
+| `ArgumentException` mentioning `PrimaryColor` / `Favicon` | The value isn't a plain colour / safe URL. | Use a hex, `rgb()`, `hsl()` or named colour; an `https:`, `data:image/` or path favicon. |
+| Startup warnings "No description" | `CheckDescriptions` found gaps. | Add descriptions and annotations, or set `CheckDescriptions = false`. |
+
+## What this doesn't do
+
+- **Call anything.** It's a read-only page: no "try it", no credentials entered in the browser.
+- **Hide the page by environment.** Map it only where you want it; there's no `IsDevelopment()` switch.
+- **Show dynamic servers.** Primitives created by a custom `ListToolsHandler` or list filters aren't visible; only what's registered, filtered by `[Authorize]`.
+- **Run custom HTML or script.** Toolbar items are links, `AdditionalCss` is CSS; the CSP stays strict.
+- **Render full CommonMark.** Markdown is a small safe subset.
+- **Mark which arguments support completion.** The SDK has one `CompleteHandler`, nothing per argument.
+
 ## Layout
 
 ```
@@ -68,7 +104,10 @@ src/Hlibz.McpDocs.AspNetCore/
   McpDocsCatalog.cs                          catalog.json from McpServerOptions collections, per viewer
   McpDocsAuthorization.cs                    [Authorize] evaluation, mirrors the SDK's list filters
   McpDocsEndpointRouteBuilderExtensions.cs   MapMcpDocs: page, catalog.json, _assets/*
-  Assets/index.html, app.css, app.js         embedded UI (vanilla JS, no deps, no inline script)
+  McpDocsEndpointDiscovery.cs                finds the MapMcp route, startup checks
+  McpDocsTheme.cs                            theme.css from the options, value validation
+  McpDocsQuality.cs                          description checks
+  Assets/index.html, app.css, print.css, app.js   embedded UI (vanilla JS, no deps, no inline script)
 samples/Sample.McpServer/                    13 tools (incl. runtime-registered `ping`, recursive output,
                                              dictionary input, polymorphic anyOf, [Authorize]d admin tools),
                                              3 prompts, 2 resources, 1 template; demo cookie sign-in
@@ -98,13 +137,11 @@ samples/Sample.McpServer/                    13 tools (incl. runtime-registered 
   search (`/` to focus); scroll spy; deep links `#tool/<name>`.
 - Tool: annotation badges with spec defaults applied, parameters tree, result tree (when `outputSchema`),
   example `tools/call` request and response.
-- Light/dark: system default, toggle remembered in `localStorage`.
+- Light/dark: system default (or `DefaultColorMode`), toggle remembered in `localStorage`.
+- Keyboard: `/` focuses search, arrow keys move through the sidebar and the connect tabs, skip link, visible focus.
 
 ## Not done / open
 
-- Dynamic servers (custom `ListToolsHandler`, custom list filters) — page shows only what's registered,
-  filtered by `[Authorize]` only.
 - Tests (real Kestrel), multi-targeting net8/9, packaging.
 - Markdown is a small safe subset, not CommonMark.
 - Connect snippet formats are from memory — verify against current client docs before shipping.
-- Icons (`Implementation.Icons`, tool icons) are ignored.

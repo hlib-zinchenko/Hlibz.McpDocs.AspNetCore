@@ -25,9 +25,9 @@ internal static partial class McpDocsTheme
     // Dark palettes: bg, sidebar, surface, text, muted, faint, border, accent, panel, panel-2, panel-border.
     private static string? Preset(McpDocsDarkPreset p) => p switch
     {
-        McpDocsDarkPreset.Midnight => "--bg:#0b1020;--sidebar:#0e1428;--surface:#131a33;--text:#e6e9f5;--muted:#9aa3c4;--faint:#6b7499;--border:#1f2848;--accent:#7aa2ff;--panel:#070b17;--panel-2:#0e1428;--panel-border:#1b2442;",
-        McpDocsDarkPreset.Nord => "--bg:#2e3440;--sidebar:#292e39;--surface:#3b4252;--text:#eceff4;--muted:#a9b3c6;--faint:#7b88a1;--border:#434c5e;--accent:#88c0d0;--panel:#242933;--panel-2:#2e3440;--panel-border:#3b4252;",
-        McpDocsDarkPreset.GitHubDark => "--bg:#0d1117;--sidebar:#010409;--surface:#161b22;--text:#e6edf3;--muted:#9198a1;--faint:#6e7681;--border:#30363d;--accent:#4493f8;--panel:#010409;--panel-2:#0d1117;--panel-border:#30363d;",
+        McpDocsDarkPreset.Midnight => "--bg:#0b1020;--sidebar:#0e1428;--surface:#131a33;--text:#e6e9f5;--muted:#9aa3c4;--faint:#8892b8;--border:#1f2848;--accent:#7aa2ff;--panel:#070b17;--panel-2:#0e1428;--panel-border:#1b2442;",
+        McpDocsDarkPreset.Nord => "--bg:#2e3440;--sidebar:#292e39;--surface:#3b4252;--text:#eceff4;--muted:#a9b3c6;--faint:#a8b3c8;--border:#434c5e;--accent:#88c0d0;--panel:#242933;--panel-2:#2e3440;--panel-border:#3b4252;",
+        McpDocsDarkPreset.GitHubDark => "--bg:#0d1117;--sidebar:#010409;--surface:#161b22;--text:#e6edf3;--muted:#9198a1;--faint:#8b949e;--border:#30363d;--accent:#4493f8;--panel:#010409;--panel-2:#0d1117;--panel-border:#30363d;",
         _ => null,
     };
 

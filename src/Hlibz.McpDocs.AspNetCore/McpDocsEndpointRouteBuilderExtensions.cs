@@ -28,7 +28,7 @@ public static class McpDocsEndpointRouteBuilderExtensions
         configure?.Invoke(docs);
         docs.Validate();
 
-        var assets = Assets.Load(Encoding.UTF8.GetBytes(McpDocsTheme.Build(docs)));
+        var assets = Assets.Load(Encoding.UTF8.GetBytes(McpDocsTheme.Build(docs)), docs.PrintStyles);
         var catalogs = new ConcurrentDictionary<string, McpDocsCatalog>(); // keyed by PathBase
 
         var group = endpoints.MapGroup(pattern);
@@ -88,6 +88,7 @@ public static class McpDocsEndpointRouteBuilderExtensions
             .Replace("{{title}}", title)
             .Replace("{{mode}}", docs.DefaultColorMode switch { McpDocsColorMode.Light => " data-theme=\"light\"", McpDocsColorMode.Dark => " data-theme=\"dark\"", _ => "" })
             .Replace("{{theme}}", assets.Files.TryGetValue("theme.css", out var theme) ? $"<link rel=\"stylesheet\" href=\"_assets/theme.css?v={theme.Version}\">" : "")
+            .Replace("{{print}}", assets.Files.TryGetValue("print.css", out var print) ? $"<link rel=\"stylesheet\" media=\"print\" href=\"_assets/print.css?v={print.Version}\">" : "")
             .Replace("{{css}}", "_assets/app.css?v=" + assets.Files["app.css"].Version)
             .Replace("{{js}}", "_assets/app.js?v=" + assets.Files["app.js"].Version);
 
@@ -119,13 +120,14 @@ public static class McpDocsEndpointRouteBuilderExtensions
         public required string PageTemplate { get; init; }
         public required Dictionary<string, Asset> Files { get; init; }
 
-        public static Assets Load(byte[] theme)
+        public static Assets Load(byte[] theme, bool print)
         {
             var files = new Dictionary<string, Asset>
             {
                 ["app.css"] = Make(Read("app.css"), "text/css; charset=utf-8"),
                 ["app.js"] = Make(Read("app.js"), "text/javascript; charset=utf-8"),
             };
+            if (print) files["print.css"] = Make(Read("print.css"), "text/css; charset=utf-8");
             if (theme.Length > 0) files["theme.css"] = Make(theme, "text/css; charset=utf-8");
             return new Assets { PageTemplate = Encoding.UTF8.GetString(Read("index.html")), Files = files };
         }

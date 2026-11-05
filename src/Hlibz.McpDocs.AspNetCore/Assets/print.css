@@ -1,0 +1,20 @@
+/* Hlibz.McpDocs — print: light palette whatever the screen mode, no sidebar or toolbar. */
+:root, :root[data-theme="dark"], :root:not([data-theme="light"]) {
+  --bg: #fff !important; --sidebar: #fff !important; --surface: #f3f3f0 !important; --text: #111 !important;
+  --muted: #444 !important; --faint: #555 !important; --border: #ccc !important; --accent: #1f2a8f !important; --accent-soft: transparent !important;
+  --panel: #f6f6f4 !important; --panel-2: #eee !important; --panel-text: #111 !important; --panel-muted: #444 !important; --panel-border: #ccc !important;
+  --tok-key: #1f4f99 !important; --tok-str: #2d6a1f !important; --tok-num: #8a4b00 !important; --tok-lit: #8a1f7a !important;
+  color-scheme: light !important;
+}
+body { font-size: 11pt; }
+.sidebar, .topbar, .skip, .icon-btn, .toolbar, .search, .btn, .quality, .anchor, .tabs, .tab-hint { display: none !important; }
+.layout { display: block; }
+.content, .content-wrap { margin: 0; }
+.row { display: block !important; break-inside: auto; }
+.row > .l, .row > .r { padding: 8px 0 !important; }
+.row.heading > .r { display: none !important; }
+pre, .code { white-space: pre-wrap !important; overflow: visible !important; border: 1px solid #ccc; }
+h2, h3, h4 { break-after: avoid; }
+pre, table, .callout { break-inside: avoid; }
+a { color: inherit; text-decoration: underline; }
+a[href^="http"]::after { content: " (" attr(href) ")"; font-size: .85em; color: #555; }

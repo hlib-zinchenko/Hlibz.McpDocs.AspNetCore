@@ -42,6 +42,12 @@ public sealed class McpDocsOptions
     /// </summary>
     public bool CheckDescriptions { get; set; } = true;
 
+    /// <summary>
+    /// Print as a light, plain document whatever the screen mode, without the sidebar and toolbar.
+    /// Set to <c>false</c> to print the page as it looks on screen.
+    /// </summary>
+    public bool PrintStyles { get; set; } = true;
+
     /// <summary>Colour mode for first-time viewers. A viewer's own choice (the toggle) wins afterwards.</summary>
     public McpDocsColorMode DefaultColorMode { get; set; } = McpDocsColorMode.System;
 

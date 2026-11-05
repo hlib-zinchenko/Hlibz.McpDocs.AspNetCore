@@ -356,15 +356,27 @@
     var current = c.tabs[0];
     var saved = store('mcp-docs-client');
     c.tabs.forEach(function (t) { if (t.id === saved) current = t; });
-    var hint = el('p', { class: 'tab-hint' }), body = el('div');
+    var hint = el('p', { class: 'tab-hint' }), body = el('div', { id: 'connect-panel', role: 'tabpanel' });
     var tabs = el('div', { class: 'tabs', role: 'tablist' });
     function show(t) {
       current = t; store('mcp-docs-client', t.id);
-      Array.prototype.forEach.call(tabs.children, function (b) { b.setAttribute('aria-selected', String(b.dataset.id === t.id)); });
+      Array.prototype.forEach.call(tabs.children, function (b) {
+        var on = b.dataset.id === t.id;
+        b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1;
+      });
+      body.setAttribute('aria-labelledby', 'connect-tab-' + t.id);
       hint.innerHTML = t.hint; // static strings above
       body.replaceChildren(codeBlock(t.text, t.json));
     }
-    c.tabs.forEach(function (t) { tabs.appendChild(el('button', { class: 'tab', type: 'button', role: 'tab', 'data-id': t.id, onclick: function () { show(t); } }, t.label)); });
+    c.tabs.forEach(function (t) { tabs.appendChild(el('button', { class: 'tab', type: 'button', role: 'tab', id: 'connect-tab-' + t.id, 'aria-controls': 'connect-panel', 'data-id': t.id, onclick: function () { show(t); } }, t.label)); });
+    tabs.addEventListener('keydown', function (e) {
+      var i = c.tabs.indexOf(current), n = c.tabs.length, to = -1;
+      if (e.key === 'ArrowRight') to = (i + 1) % n; else if (e.key === 'ArrowLeft') to = (i + n - 1) % n;
+      else if (e.key === 'Home') to = 0; else if (e.key === 'End') to = n - 1;
+      if (to < 0) return;
+      e.preventDefault(); show(c.tabs[to]); tabs.children[to].focus();
+    });
+    tabs.setAttribute('aria-label', 'Client');
     var wrap = el('div', null,
       el('div', { class: 'panel-title' }, el('span', { text: 'Connect' }), copyButton(function () { return current.text; })),
       tabs, hint, body);
@@ -576,7 +588,7 @@
       el('div', { 'data-group': '' },
         resources.map(function (e) { var r = e.definition; return navItem('resource/' + r.name, r.name, null, null, [r.title, r.description, r.uri].join(' '), e.authorization, r.icons); }),
         templates.map(function (e) { var r = e.definition; return navItem('template/' + r.name, r.name, '{ }', null, [r.title, r.description, r.uriTemplate].join(' '), e.authorization, r.icons); }))));
-    var empty = el('div', { class: 'nav-empty', text: 'No matches.', hidden: true });
+    var empty = el('div', { class: 'nav-empty', role: 'status', text: 'No matches.', hidden: true });
     append(nav, empty);
 
     var search = el('input', { type: 'search', placeholder: 'Search', 'aria-label': 'Search tools, prompts and resources', autocomplete: 'off' });
@@ -587,7 +599,18 @@
       nav.querySelectorAll('[data-section]').forEach(function (s) { s.hidden = !s.querySelector('.nav-item:not([hidden])'); });
       empty.hidden = any;
     });
+    function visibleItems() { return navItems.filter(function (a) { return !a.hidden; }); }
+    nav.addEventListener('keydown', function (e) {
+      if (['ArrowDown', 'ArrowUp', 'Home', 'End'].indexOf(e.key) < 0) return;
+      var items = visibleItems(), i = items.indexOf(document.activeElement);
+      if (i < 0) return;
+      e.preventDefault();
+      if (e.key === 'ArrowUp' && i === 0) { search.focus(); return; }
+      var to = e.key === 'ArrowDown' ? Math.min(i + 1, items.length - 1) : e.key === 'ArrowUp' ? i - 1 : e.key === 'Home' ? 0 : items.length - 1;
+      items[to].focus();
+    });
     search.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown') { var f = visibleItems()[0]; if (f) { e.preventDefault(); f.focus(); } }
       if (e.key === 'Escape') { search.value = ''; search.dispatchEvent(new Event('input')); search.blur(); }
       if (e.key === 'Enter') { var first = navItems.filter(function (a) { return !a.hidden; })[0]; if (first) { first.click(); search.blur(); } }
     });
@@ -596,14 +619,14 @@
     });
 
     var themeBtn = el('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Toggle dark mode', title: 'Toggle dark mode' });
-    function paintThemeBtn() { themeBtn.innerHTML = isDark() ? ICON_SUN : ICON_MOON; }
+    function paintThemeBtn() { themeBtn.innerHTML = isDark() ? ICON_SUN : ICON_MOON; themeBtn.setAttribute('aria-pressed', String(isDark())); }
     themeBtn.addEventListener('click', function () {
       var next = isDark() ? 'light' : 'dark';
       root.setAttribute('data-theme', next); store(THEME_KEY, next); paintThemeBtn();
     });
     paintThemeBtn();
 
-    var sidebar = el('aside', { class: 'sidebar' },
+    var sidebar = el('aside', { class: 'sidebar', id: 'sidebar', 'aria-label': 'Navigation' },
       el('div', { class: 'side-head' },
         el('div', { class: 'side-title' }, el('strong', { text: title }), server.version ? el('span', { text: 'v' + server.version }) : null),
         themeBtn),
@@ -638,7 +661,7 @@
       d.authHint ? el('div', { class: 'callout' }, el('span', { class: 'lbl', text: 'Authentication' }), mdEl('div', '', d.authHint)) : null);
     var overview = el('section', { class: 'row', id: 'overview', 'data-nav': 'overview' }, overviewLeft, el('div', { class: 'r' }, connectPanel(cat)));
 
-    var main = el('main', { class: 'content' }, overview);
+    var main = el('main', { class: 'content', id: 'main', tabindex: '-1' }, overview);
     if (tools.length) {
       append(main, heading('tools', 'Tools', tools.length));
       groups.forEach(function (g) {
@@ -654,11 +677,11 @@
     }
 
     var layout = el('div', { class: 'layout' }, sidebar, el('div', { class: 'content-wrap', style: null }));
-    var menuBtn = el('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Menu', html: ICON_MENU, onclick: function () { layout.classList.toggle('nav-open'); } });
+    var menuBtn = el('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Menu', 'aria-expanded': 'false', 'aria-controls': 'sidebar', html: ICON_MENU, onclick: function () { menuBtn.setAttribute('aria-expanded', String(layout.classList.toggle('nav-open'))); } });
     var topbar = el('div', { class: 'topbar' }, menuBtn, el('strong', { text: title }));
     layout.replaceChild(el('div', { class: 'content' }, topbar, main), layout.lastChild);
-    nav.addEventListener('click', function (e) { if (e.target.closest('.nav-item')) layout.classList.remove('nav-open'); });
-    app.replaceChildren(layout);
+    nav.addEventListener('click', function (e) { if (e.target.closest('.nav-item')) layout.classList.remove('nav-open'); menuBtn.setAttribute('aria-expanded', 'false'); });
+    app.replaceChildren(el('a', { class: 'skip', href: '#main', onclick: function (e) { e.preventDefault(); main.focus(); main.scrollIntoView(); } , text: 'Skip to content' }), layout);
 
     // --- scroll spy + deep links
     var byTarget = {};
@@ -669,8 +692,8 @@
         if (!en.isIntersecting) return;
         var a = byTarget[en.target.dataset.nav];
         if (!a || a === active) return;
-        if (active) active.classList.remove('active');
-        active = a; a.classList.add('active');
+        if (active) { active.classList.remove('active'); active.removeAttribute('aria-current'); }
+        active = a; a.classList.add('active'); a.setAttribute('aria-current', 'location');
         var nr = nav.getBoundingClientRect(), ar = a.getBoundingClientRect();
         if (ar.top < nr.top || ar.bottom > nr.bottom) a.scrollIntoView({ block: 'nearest' });
       });
