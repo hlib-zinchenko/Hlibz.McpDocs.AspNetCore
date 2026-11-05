@@ -452,6 +452,21 @@
     return order.map(function (g) { return { name: g || (named ? 'Other' : ''), items: groups[g] }; });
   }
 
+  // MCP icons: { src, mimeType?, sizes?, theme? }. Only https: and data:image URLs are used (the CSP allows no more),
+  // and an <img> never runs script, svg included.
+  function iconUrl(icons) {
+    if (!Array.isArray(icons)) return null;
+    var dark = isDark();
+    var ok = icons.filter(function (i) { return i && typeof i.src === 'string' && /^(https:\/\/|data:image\/(png|jpeg|gif|webp|svg\+xml)[;,])/i.test(i.src); });
+    var pick = ok.filter(function (i) { return i.theme === (dark ? 'dark' : 'light'); })[0]
+      || ok.filter(function (i) { return !i.theme; })[0] || ok[0];
+    return pick ? pick.src : null;
+  }
+  function iconEl(icons, cls) {
+    var src = iconUrl(icons);
+    return src ? el('img', { class: 'mcp-icon ' + (cls || ''), src: src, alt: '', width: 16, height: 16, loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' }) : null;
+  }
+
   function render(app, cat) {
     var server = cat.server || {};
     var d = cat.docs || {};
@@ -459,12 +474,18 @@
     var groups = groupTools(tools);
     var title = d.title || server.title || server.name || 'MCP server';
     document.title = title;
+    var fav = iconUrl(server.icons);
+    if (fav) {
+      var link = document.querySelector('link[rel~="icon"]') || document.head.appendChild(el('link', { rel: 'icon' }));
+      link.setAttribute('href', fav);
+    }
 
     // --- sidebar
     var navItems = [];
-    function navItem(id, name, kind, dot, searchText, auth) {
+    function navItem(id, name, kind, dot, searchText, auth, icons) {
       var a = el('a', { class: 'nav-item', href: '#' + id, 'data-target': id, 'data-search': (name + ' ' + (searchText || '') + ' ' + authSearch(auth)).toLowerCase() },
         dot !== null ? el('span', { class: 'dot ' + (dot || '') }) : null,
+        iconEl(icons),
         el('span', { class: 'nm', text: name, title: name }),
         auth ? el('span', { class: 'lock', title: 'Restricted: ' + authLabel(auth), html: ICON_LOCK }) : null,
         kind ? el('span', { class: 'kind', text: kind }) : null);
@@ -477,16 +498,16 @@
       el('div', { class: 'nav-label' }, el('span', { text: 'Tools' }), el('span', { text: String(tools.length) })),
       groups.map(function (g) {
         return el('div', { 'data-group': '' }, g.name ? el('div', { class: 'nav-group', text: g.name }) : null,
-          g.items.map(function (e) { var t = e.definition; return navItem('tool/' + t.name, t.name, null, risk(t).level, [t.title, t.description, g.name].join(' '), e.authorization); }));
+          g.items.map(function (e) { var t = e.definition; return navItem('tool/' + t.name, t.name, null, risk(t).level, [t.title, t.description, g.name].join(' '), e.authorization, t.icons); }));
       })));
     if (prompts.length) append(nav, el('div', { class: 'nav-section', 'data-section': '' },
       el('div', { class: 'nav-label' }, el('span', { text: 'Prompts' }), el('span', { text: String(prompts.length) })),
-      el('div', { 'data-group': '' }, prompts.map(function (e) { var p = e.definition; return navItem('prompt/' + p.name, p.name, null, null, [p.title, p.description].join(' '), e.authorization); }))));
+      el('div', { 'data-group': '' }, prompts.map(function (e) { var p = e.definition; return navItem('prompt/' + p.name, p.name, null, null, [p.title, p.description].join(' '), e.authorization, p.icons); }))));
     if (resources.length + templates.length) append(nav, el('div', { class: 'nav-section', 'data-section': '' },
       el('div', { class: 'nav-label' }, el('span', { text: 'Resources' }), el('span', { text: String(resources.length + templates.length) })),
       el('div', { 'data-group': '' },
-        resources.map(function (e) { var r = e.definition; return navItem('resource/' + r.name, r.name, null, null, [r.title, r.description, r.uri].join(' '), e.authorization); }),
-        templates.map(function (e) { var r = e.definition; return navItem('template/' + r.name, r.name, '{ }', null, [r.title, r.description, r.uriTemplate].join(' '), e.authorization); }))));
+        resources.map(function (e) { var r = e.definition; return navItem('resource/' + r.name, r.name, null, null, [r.title, r.description, r.uri].join(' '), e.authorization, r.icons); }),
+        templates.map(function (e) { var r = e.definition; return navItem('template/' + r.name, r.name, '{ }', null, [r.title, r.description, r.uriTemplate].join(' '), e.authorization, r.icons); }))));
     var empty = el('div', { class: 'nav-empty', text: 'No matches.', hidden: true });
     append(nav, empty);
 
@@ -530,7 +551,7 @@
     ].filter(Boolean);
     var endpointUrl = new URL(d.mcpEndpoint || '/mcp', location.href).href;
     var overviewLeft = el('div', { class: 'l' },
-      el('h1', { text: title }),
+      el('h1', null, iconEl(server.icons, 'lg'), title),
       el('div', { class: 'meta' },
         server.version ? el('span', null, 'Version ', el('b', { text: server.version })) : null,
         server.name && server.name !== title ? el('span', null, 'Server ', el('b', { text: server.name })) : null,

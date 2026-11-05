@@ -23,7 +23,7 @@ public record Order(string Id, OrderStatus Status, decimal Total, string Currenc
 [McpDocsGroup("Orders")]
 public class OrderTools
 {
-    [McpServerTool(Name = "get_order", Title = "Get order", ReadOnly = true, Idempotent = true, OpenWorld = false, UseStructuredContent = true)]
+    [McpServerTool(IconSource = "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%234f46e5'/%3E%3Cpath d='M4 8h8M8 4v8' stroke='white' stroke-width='2'/%3E%3C/svg%3E", Name = "get_order", Title = "Get order", ReadOnly = true, Idempotent = true, OpenWorld = false, UseStructuredContent = true)]
     [Description("Returns a single order by its id. Output is structured (has an output schema).")]
     public Order GetOrder([Description("Order id, e.g. 'ORD-1001'")] string orderId) =>
         new(orderId, OrderStatus.Paid, 42.50m, "EUR", DateTimeOffset.UtcNow.AddDays(-2),

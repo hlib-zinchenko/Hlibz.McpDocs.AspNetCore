@@ -92,6 +92,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .nav-item.active { background: var(--accent-soft); color: var(--accent); }
 .nav-item .nm { font-family: var(--mono); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .nav-item .kind { font-size: 10px; font-family: var(--mono); color: var(--faint); }
+.mcp-icon { flex: none; width: 16px; height: 16px; object-fit: contain; border-radius: 3px; }
+.mcp-icon.lg { width: 32px; height: 32px; margin-right: 12px; vertical-align: -6px; border-radius: 6px; }
 .dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
 .dot.ok { background: var(--ok); } .dot.danger { background: var(--danger); } .dot.warn { background: var(--warn); }
 .nav-empty { padding: 10px; font-size: 13px; color: var(--muted); }

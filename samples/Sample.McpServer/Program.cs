@@ -22,6 +22,7 @@ builder.Services
             Title = "Acme Orders",
             Version = "1.2.3",
             WebsiteUrl = "https://example.com/acme-orders",
+            Icons = [new() { Source = "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%234f46e5'/%3E%3Cpath d='M4 8h8M8 4v8' stroke='white' stroke-width='2'/%3E%3C/svg%3E", MimeType = "image/svg+xml" }],
         };
         o.ServerInstructions = "Acme order management. Use get_order before cancelling anything.";
     })
