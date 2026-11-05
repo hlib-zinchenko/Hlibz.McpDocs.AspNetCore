@@ -155,6 +155,12 @@ internal sealed class McpDocsCatalog
                     }
                     if (item.Primitive is McpServerTool tool) WriteString(w, "group", _docs.ToolGroup(tool));
                     if (item.Gated) McpDocsAuthorization.WriteRequirements(w, item.Primitive);
+                    if (_docs.CheckDescriptions && McpDocsQuality.Check(item.Primitive) is { Count: > 0 } issues)
+                    {
+                        w.WriteStartArray("issues");
+                        foreach (var issue in issues) w.WriteStringValue(issue);
+                        w.WriteEndArray();
+                    }
                     w.WriteEndObject();
                 }
                 w.WriteEndArray();

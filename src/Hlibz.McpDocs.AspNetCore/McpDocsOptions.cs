@@ -35,6 +35,13 @@ public sealed class McpDocsOptions
     /// </summary>
     public bool ShowMeta { get; set; }
 
+    /// <summary>
+    /// Check descriptions: tools, prompts and resources without one, parameters and arguments without one, tools
+    /// without annotations. Shown on the page and logged as warnings at startup. On by default; to keep the page
+    /// out of an environment, don't map it there.
+    /// </summary>
+    public bool CheckDescriptions { get; set; } = true;
+
     /// <summary>Colour mode for first-time viewers. A viewer's own choice (the toggle) wins afterwards.</summary>
     public McpDocsColorMode DefaultColorMode { get; set; } = McpDocsColorMode.System;
 

@@ -208,3 +208,8 @@ h4 small { text-transform: none; letter-spacing: 0; font-weight: 400; color: var
 .caps { margin-top: 10px; }
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 12px 0; font-size: 13px; }
 .facts dt { color: var(--muted); } .facts dd { margin: 0; }
+
+.quality { margin: 12px 0 0; padding: 8px 12px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); font-size: 13px; }
+.quality summary { cursor: pointer; font-weight: 600; }
+.quality ul { margin: 6px 0 0; padding-left: 18px; color: var(--text); }
+.quality .none { margin: 6px 0 0; color: var(--muted); }

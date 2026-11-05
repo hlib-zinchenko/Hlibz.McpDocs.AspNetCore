@@ -42,6 +42,8 @@ public static class McpDocsEndpointRouteBuilderExtensions
             var log = services.GetRequiredService<ILoggerFactory>().CreateLogger("Hlibz.McpDocs.AspNetCore");
             var check = McpDocsEndpointDiscovery.Resolve(services, docs, basePath);
             foreach (var w in check.Warnings) log.LogWarning("{Message}", w);
+            if (docs.CheckDescriptions && services.GetService<IOptions<McpServerOptions>>()?.Value is { } server)
+                foreach (var w in McpDocsQuality.Warnings(server)) log.LogWarning("{Message}", w);
             if (check.Errors.Count == 0) return;
             foreach (var e in check.Errors) log.LogCritical("{Message}", e);
             Environment.ExitCode = 1;

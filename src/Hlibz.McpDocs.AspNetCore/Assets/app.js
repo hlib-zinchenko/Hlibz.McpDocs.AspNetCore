@@ -387,7 +387,7 @@
     var left = el('div', { class: 'l' },
       el('h3', { class: 'op-name' }, t.name, el('a', { class: 'anchor', href: '#tool/' + encodeURIComponent(t.name), 'aria-label': 'Link to ' + t.name, text: '#' })),
       title ? el('p', { class: 'op-title', text: title }) : null,
-      badgeRow(r.badges, [lockBadge(entry.authorization), tokenBadge(t)]),
+      badgeRow(r.badges, [lockBadge(entry.authorization), issueBadge(entry), tokenBadge(t)]),
       mdEl('div', '', t.description),
       el('h4', null, 'Parameters'),
       schemaView(t.inputSchema),
@@ -411,7 +411,7 @@
     var left = el('div', { class: 'l' },
       el('h3', { class: 'op-name' }, p.name, el('a', { class: 'anchor', href: '#prompt/' + encodeURIComponent(p.name), text: '#' })),
       p.title ? el('p', { class: 'op-title', text: p.title }) : null,
-      el('div', { class: 'badges' }, lockBadge(entry.authorization), el('span', { class: 'badge plain', text: 'Prompt' })),
+      el('div', { class: 'badges' }, lockBadge(entry.authorization), issueBadge(entry), el('span', { class: 'badge plain', text: 'Prompt' })),
       mdEl('div', '', p.description),
       el('h4', null, 'Arguments'),
       args.length ? el('div', { class: 'props' }, args.map(function (a) {
@@ -434,7 +434,7 @@
     var left = el('div', { class: 'l' },
       el('h3', { class: 'op-name' }, res.name, el('a', { class: 'anchor', href: '#' + kind + '/' + encodeURIComponent(res.name), text: '#' })),
       res.title ? el('p', { class: 'op-title', text: res.title }) : null,
-      el('div', { class: 'badges' }, lockBadge(entry.authorization), el('span', { class: 'badge plain', text: templated ? 'Resource template' : 'Resource' }),
+      el('div', { class: 'badges' }, lockBadge(entry.authorization), issueBadge(entry), el('span', { class: 'badge plain', text: templated ? 'Resource template' : 'Resource' }),
         res.mimeType ? el('span', { class: 'badge plain', text: res.mimeType }) : null),
       el('div', { class: 'endpoint' }, el('span', { class: 'tag', text: 'URI' }), el('code', { text: addr })),
       mdEl('div', '', res.description),
@@ -500,6 +500,23 @@
   }
 
   var SHOW_META = false;
+  // entry.issues: description checks from the server (missing descriptions, missing annotations).
+  function issueBadge(entry) {
+    var n = entry.issues && entry.issues.length;
+    return n ? el('span', { class: 'badge warn', title: entry.issues.join('\n'), text: n + (n === 1 ? ' issue' : ' issues') }) : null;
+  }
+  function qualityPanel(cat) {
+    var rows = [];
+    [['tool', 'tools', function (d) { return d.name; }], ['prompt', 'prompts', function (d) { return d.name; }],
+     ['resource', 'resources', function (d) { return d.name; }], ['template', 'resourceTemplates', function (d) { return d.name; }]].forEach(function (k) {
+      (cat[k[1]] || []).forEach(function (e) {
+        if (e.issues && e.issues.length) rows.push(el('li', null, el('a', { href: '#' + k[0] + '/' + encodeURIComponent(k[2](e.definition)), text: k[2](e.definition) }), ' ' + e.issues.join(' ')));
+      });
+    });
+    if (!rows.length) return null;
+    return el('details', { class: 'quality' }, el('summary', { text: 'Description check: ' + rows.length + (rows.length === 1 ? ' item needs' : ' items need') + ' attention' }),
+      el('p', { class: 'none', text: 'The description is what a model reads to decide how to use a tool, so a missing one is a bug.' }), el('ul', null, rows));
+  }
   function capChips(c) {
     if (!c) return null;
     var chips = [];
@@ -612,6 +629,7 @@
       tools.length ? el('p', { class: 'cost', title: 'Name, description and input schema of every tool, about 4 characters per token. An estimate.' },
         'Context cost: all tools together are about ', el('b', { text: '~' + fmtTokens(tools.reduce(function (n, e) { return n + toolTokens(e.definition); }, 0)) + ' tokens' }),
         ' in every conversation that enables them.') : null,
+      qualityPanel(cat),
       mdEl('div', '', d.description || server.description),
       d.description && cat.instructions ? el('div', { class: 'callout' }, el('span', { class: 'lbl', text: 'Instructions for the model' }), mdEl('div', '', cat.instructions)) : null,
       !d.description && !server.description ? mdEl('div', '', cat.instructions) : null,
