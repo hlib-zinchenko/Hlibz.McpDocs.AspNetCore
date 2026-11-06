@@ -7,7 +7,7 @@ what the server offers (tools, prompts, resources) and how to connect to it, fro
 the MCP SDK already has, with nothing to write twice.
 
 [![CI](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/actions/workflows/ci.yml/badge.svg)](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/actions/workflows/ci.yml)
-[![NuGet](https://img.shields.io/nuget/vpre/Hlibz.McpDocs.AspNetCore.svg)](https://www.nuget.org/packages/Hlibz.McpDocs.AspNetCore)
+[![NuGet](https://img.shields.io/nuget/v/Hlibz.McpDocs.AspNetCore.svg)](https://www.nuget.org/packages/Hlibz.McpDocs.AspNetCore)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/Hlibz.McpDocs.AspNetCore.svg)](https://www.nuget.org/packages/Hlibz.McpDocs.AspNetCore)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/blob/main/LICENSE)
 
@@ -35,16 +35,26 @@ person deciding whether to connect to it. A hand-written page drifts the first t
 a parameter. This page is generated from the same registrations `tools/list` is, serialized with the
 SDK's own JSON options, so what it shows is what a client gets. A test in this repo diffs the two.
 
+## About this project
+
+This started as a companion to an MCP server I build at work. I wanted a page that shows, at a glance,
+what our MCP server can do, so that I, my colleagues or a client can see it without reading code or
+poking `tools/list` by hand. The project grows as I discover more of MCP, so expect it to change and pick up
+new features over time.
+
+If you hit a problem or have an idea, please [open an issue](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/issues).
+I'll do my best to keep the project moving.
+
 ## Install
 
 ```bash
-dotnet add package Hlibz.McpDocs.AspNetCore --prerelease
+dotnet add package Hlibz.McpDocs.AspNetCore
 ```
 
 With central package management, set the version in `Directory.Packages.props`:
 
 ```xml
-<PackageVersion Include="Hlibz.McpDocs.AspNetCore" Version="0.1.0-preview.1" />
+<PackageVersion Include="Hlibz.McpDocs.AspNetCore" Version="0.1.0" />
 ```
 
 ## Quick start
@@ -143,14 +153,16 @@ The sample signs in with a demo cookie: `/demo/sign-in?roles=admin,finance`, `/d
 | `ArgumentException` mentioning `PrimaryColor` / `Favicon` | The value isn't a plain colour / safe URL. | Use a hex, `rgb()`, `hsl()` or named colour; an `https:`, `data:image/` or path favicon. |
 | Startup warnings "No description" | `CheckDescriptions` found gaps. | Add descriptions and annotations, or set `CheckDescriptions = false`. |
 
-## What this doesn't do
+## What this doesn't do (yet)
 
-- **Call anything.** It's a read-only page: no "try it", no credentials entered in the browser.
-- **Hide the page by environment.** Map it only where you want it; there's no `IsDevelopment()` switch.
-- **Show dynamic servers.** Primitives created by a custom `ListToolsHandler` or list filters aren't visible; only what's registered, filtered by `[Authorize]`.
-- **Run custom HTML or script.** Toolbar items are links, `AdditionalCss` is CSS; the CSP stays strict.
-- **Render full CommonMark.** Markdown is a small safe subset.
-- **Mark which arguments support completion.** The SDK has one `CompleteHandler`, nothing per argument.
+Mostly not a "never": this is where the project stands today, and much of it may change.
+
+- **Call anything.** For now it's a read-only page: no "try it", no credentials entered in the browser. A "try it" mode may come later.
+- **Hide the page by environment.** Map it only where you want it; there's no `IsDevelopment()` switch yet.
+- **Show dynamic servers.** Primitives created by a custom `ListToolsHandler` or list filters aren't visible; only what's registered, filtered by `[Authorize]`. Hard to solve in general, but I may find a way.
+- **Run custom HTML or script.** Toolbar items are links, `AdditionalCss` is CSS; the CSP stays strict. This one is on purpose and likely to stay.
+- **Render full CommonMark.** Markdown is a small safe subset for now; it may grow.
+- **Mark which arguments support completion.** The SDK has one `CompleteHandler`, nothing per argument, so this depends on the SDK.
 
 ## Testing your contract
 
@@ -171,7 +183,7 @@ anonymous and an admin viewer; `UPDATE_SNAPSHOTS=1 dotnet test` accepts a change
 
 ## Versioning
 
-The package follows [semantic versioning](https://semver.org). It is a preview: until 1.0, a minor
+The package follows [semantic versioning](https://semver.org). Until 1.0, a minor
 version may change an option or the shape of `catalog.json`. `catalog.json`, `catalog.md` and
 `llms.txt` are generated output meant for tools and people, so snapshot tests of them are expected to
 change when you upgrade; review the diff, then accept it.
