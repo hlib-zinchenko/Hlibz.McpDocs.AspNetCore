@@ -7,5 +7,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Hlibz.McpDocs.AspNetCore.Tests.csproj" />
+    <Project Path="tests/Visual/Hlibz.McpDocs.AspNetCore.VisualTests.csproj" />
   </Folder>
 </Solution>
