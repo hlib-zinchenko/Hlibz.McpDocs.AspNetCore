@@ -87,9 +87,14 @@ internal sealed class TestApp : IAsyncDisposable
         [Authorize(Roles = "admin")]
         public string DeleteThing([Description("The id")] string id) => id;
 
+        [McpServerTool(Name = "list_things", ReadOnly = true, UseStructuredContent = true), Description("Lists things.")]
+        public IReadOnlyList<Thing> ListThings() => [new("t-1", 2)];
+
         [McpServerTool(Name = "sloppy")]
         public string Sloppy(string id) => id;
     }
+
+    public sealed record Thing([property: Description("Thing id")] string Id, int Count);
 
     [McpServerPromptType]
     public sealed class Prompts

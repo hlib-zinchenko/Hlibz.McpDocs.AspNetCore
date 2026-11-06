@@ -231,6 +231,15 @@
     return propsView(s, schema, ['Root'], 0);
   }
 
+  // outputSchema need not be an object (protocol 2026-07-28+): a list or a bare value is shown as one typed row.
+  function resultView(schema) {
+    var s = resolve(schema, schema);
+    if (s.properties && Object.keys(s.properties).length) return propsView(s, schema, ['Root'], 0);
+    if (variants(s) && nonNull(s)[0] !== 'array') return schemaBody(s, schema, [], 0);
+    return [el('div', { class: 'props result-value' }, propView('value', schema, false, schema, ['Root'], 0)),
+      el('p', { class: 'none', html: 'Not an object: clients on protocol <code>2025-11-25</code> or older receive it wrapped as <code>{ "result": … }</code>.' })];
+  }
+
   // Example value from a schema — used for the request/response samples.
   function example(raw, rootSchema, depth, seen) {
     depth = depth || 0; seen = seen || [];
@@ -424,7 +433,7 @@
       mdEl('div', '', t.description),
       el('h4', null, 'Parameters'),
       schemaView(t.inputSchema),
-      t.outputSchema ? [el('h4', null, 'Result', el('small', { text: 'structuredContent' })), schemaView(t.outputSchema)] : null,
+      t.outputSchema ? [el('h4', null, 'Result', el('small', { text: 'structuredContent' })), resultView(t.outputSchema)] : null,
       metaBlock(t, SHOW_META));
 
     var args = example(t.inputSchema || {}, t.inputSchema || {}, 0, ['Root']);
@@ -435,6 +444,9 @@
     } else {
       append(right, el('p', { class: 'panel-note', html: 'Returns <code>content</code> blocks (usually text). No output schema declared.' }));
     }
+    // MCP declares no error shape: a failed call is a normal result with isError and (usually text) content.
+    append(right, el('p', { class: 'panel-note', html: 'On failure: <code>isError: true</code> with text <code>content</code>.' +
+      (t.outputSchema ? ' The output schema does not cover errors.' : '') }));
     return el('section', { class: 'row', id: 'tool/' + t.name, 'data-nav': 'tool/' + t.name }, left, right);
   }
 

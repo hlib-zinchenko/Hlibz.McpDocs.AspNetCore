@@ -8,7 +8,7 @@
     <RootNamespace>Hlibz.McpDocs.AspNetCore</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageId>Hlibz.McpDocs.AspNetCore</PackageId>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <Authors>Hlib Zinchenko</Authors>
     <Description>Read-only, ReDoc-style documentation page for MCP servers hosted in ASP.NET Core.</Description>
     <RepositoryUrl>https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore</RepositoryUrl>

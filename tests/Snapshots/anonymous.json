@@ -41,6 +41,38 @@
     },
     {
       "definition": {
+        "name": "list_things",
+        "description": "Lists things.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "description": "Thing id",
+                "type": "string"
+              },
+              "count": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "count"
+            ]
+          }
+        },
+        "annotations": {
+          "readOnlyHint": true
+        }
+      }
+    },
+    {
+      "definition": {
         "name": "ping",
         "description": "",
         "inputSchema": {

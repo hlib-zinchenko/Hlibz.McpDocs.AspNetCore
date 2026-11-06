@@ -67,7 +67,17 @@ internal static class McpDocsExports
         if (d["outputSchema"] is JsonObject output)
         {
             sb.Append("\nResult (`structuredContent`):\n\n");
-            Parameters(sb, output);
+            if (output["properties"] is JsonObject { Count: > 0 }) Parameters(sb, output);
+            else
+            {
+                // Not an object (allowed since protocol 2026-07-28): a list or a bare value.
+                sb.Append("Type: `").Append(TypeOf(output)).Append("`. Clients on protocol 2025-11-25 or older receive it wrapped as `{ \"result\": ... }`.\n");
+                if (output["items"] is JsonObject { } items && Resolve(items, output)?["properties"] is JsonObject { Count: > 0 })
+                {
+                    sb.Append("\nEach item:\n\n");
+                    Parameters(sb, Resolve(items, output));
+                }
+            }
         }
     }
 
@@ -144,6 +154,15 @@ internal static class McpDocsExports
         foreach (var (name, prop) in props)
             sb.Append("| `").Append(name).Append("` | ").Append(Cell(TypeOf(prop))).Append(" | ")
               .Append(required.Contains(name) ? "yes" : "no").Append(" | ").Append(Cell((string?)prop?["description"])).Append(" |\n");
+    }
+
+    /// <summary>Follows a local <c>#/$defs/X</c> (or <c>#/definitions/X</c>) <c>$ref</c> against the root schema.</summary>
+    private static JsonNode? Resolve(JsonNode node, JsonNode root)
+    {
+        if ((string?)node["$ref"] is not { } r || !r.StartsWith("#/", StringComparison.Ordinal)) return node;
+        JsonNode? cur = root;
+        foreach (var part in r[2..].Split('/')) cur = cur?[part.Replace("~1", "/").Replace("~0", "~")];
+        return cur;
     }
 
     /// <summary>A short type label: <c>$ref</c> by name, arrays "of", unions joined, otherwise the schema <c>type</c>.</summary>

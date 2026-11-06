@@ -54,7 +54,7 @@ dotnet add package Hlibz.McpDocs.AspNetCore
 With central package management, set the version in `Directory.Packages.props`:
 
 ```xml
-<PackageVersion Include="Hlibz.McpDocs.AspNetCore" Version="0.1.0" />
+<PackageVersion Include="Hlibz.McpDocs.AspNetCore" Version="0.1.1" />
 ```
 
 ## Quick start

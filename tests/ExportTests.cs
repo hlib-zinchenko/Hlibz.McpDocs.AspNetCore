@@ -27,6 +27,17 @@ public class ExportTests
     }
 
     [Fact]
+    public async Task Markdown_describes_a_result_that_is_not_an_object()
+    {
+        await using var app = await TestApp.StartAsync();
+        var md = await app.Client().GetStringAsync("/mcp-docs/catalog.md");
+
+        Assert.Contains("Type: `array of object`. Clients on protocol 2025-11-25 or older receive it wrapped as `{ \"result\": ... }`.", md);
+        Assert.Contains("Each item:", md);
+        Assert.Contains("| `id` | string | yes | Thing id |", md);
+    }
+
+    [Fact]
     public async Task Llms_txt_is_an_index_that_links_to_the_markdown()
     {
         await using var app = await TestApp.StartAsync();
