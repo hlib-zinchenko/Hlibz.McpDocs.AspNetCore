@@ -107,6 +107,7 @@ internal sealed class McpDocsCatalog
 
             w.WriteStartObject("docs");
             w.WriteBoolean("showMeta", _docs.ShowMeta);
+            w.WriteBoolean("installLinks", _docs.InstallLinks);
             WriteString(w, "title", _docs.Title ?? info?.Title ?? serverName);
             WriteString(w, "description", _docs.Description);
             WriteString(w, "mcpEndpoint", _endpoint);

@@ -342,11 +342,28 @@
     srv = {}; srv[key] = { command: 'npx', args: ['-y', 'mcp-remote', url].concat(h ? ['--header', h + ': ' + p] : []) };
     var desktop = j({ mcpServers: srv });
 
+    // Goose: config.yaml, `uri` (not `url`) and `streamable_http`. JSON strings are valid YAML scalars.
+    var q = JSON.stringify;
+    var goose = 'extensions:\n  ' + key + ':\n    name: ' + q(key) + '\n    type: streamable_http\n    uri: ' + q(url) +
+      (h ? '\n    headers:\n      ' + q(h) + ': ' + q(p) : '') + '\n    enabled: true\n    timeout: 300';
+
+    // One-click installs. Formats from code.visualstudio.com/api/extension-guides/ai/mcp and cursor.com/docs/mcp/install-links.
+    var vscodeLink = null, cursorLink = null;
+    if (d.installLinks !== false) {
+      var vsCfg = { name: key, type: 'http', url: url }; if (headers) vsCfg.headers = headers;
+      vscodeLink = 'vscode:mcp/install?' + encodeURIComponent(JSON.stringify(vsCfg));
+      var cuCfg = { url: url }; if (headers) cuCfg.headers = headers;
+      cursorLink = 'cursor://anysphere.cursor-deeplink/mcp/install?name=' + encodeURIComponent(key) +
+        '&config=' + encodeURIComponent(btoa(String.fromCharCode.apply(null, new TextEncoder().encode(JSON.stringify(cuCfg)))));
+    }
+    var tokenNote = h ? ' It installs the <code>' + h.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</code> header with a placeholder value: replace it with your token.' : '';
+
     return { url: url, tabs: [
       { id: 'claude-code', label: 'Claude Code', hint: 'Run in a terminal:', text: claudeCode, json: false },
       { id: 'claude-desktop', label: 'Claude Desktop', hint: 'Settings → Connectors → Add custom connector with the URL above. Or add to <code>claude_desktop_config.json</code>:', text: desktop, json: true },
-      { id: 'vscode', label: 'VS Code', hint: 'Add to <code>.vscode/mcp.json</code>:', text: vscode, json: true },
-      { id: 'cursor', label: 'Cursor', hint: 'Add to <code>~/.cursor/mcp.json</code>:', text: cursor, json: true },
+      { id: 'vscode', label: 'VS Code', hint: 'Add to <code>.vscode/mcp.json</code>:', text: vscode, json: true, install: vscodeLink && { label: 'Add to VS Code', href: vscodeLink, note: 'Opens VS Code to review and install.' + tokenNote } },
+      { id: 'cursor', label: 'Cursor', hint: 'Add to <code>~/.cursor/mcp.json</code>:', text: cursor, json: true, install: cursorLink && { label: 'Add to Cursor', href: cursorLink, note: 'Opens Cursor to review and install.' + tokenNote } },
+      { id: 'goose', label: 'Goose', hint: 'Add to <code>~/.config/goose/config.yaml</code> (or run <code>goose configure</code> → Add Extension → Remote Extension):', text: goose, json: false },
       { id: 'other', label: 'Other', hint: 'Any MCP client that supports the Streamable HTTP transport:', text: 'URL:        ' + url + '\nTransport:  Streamable HTTP' + (h ? '\nHeader:     ' + h + ': ' + p : ''), json: false }
     ] };
   }
@@ -367,6 +384,10 @@
       body.setAttribute('aria-labelledby', 'connect-tab-' + t.id);
       hint.innerHTML = t.hint; // static strings above
       body.replaceChildren(codeBlock(t.text, t.json));
+      if (t.install) {
+        var note = el('span', { class: 'install-note' }); note.innerHTML = t.install.note; // static strings, header name escaped above
+        body.appendChild(el('p', { class: 'install' }, el('a', { class: 'btn install-btn', href: t.install.href }, t.install.label), note));
+      }
     }
     c.tabs.forEach(function (t) { tabs.appendChild(el('button', { class: 'tab', type: 'button', role: 'tab', id: 'connect-tab-' + t.id, 'aria-controls': 'connect-panel', 'data-id': t.id, onclick: function () { show(t); } }, t.label)); });
     tabs.addEventListener('keydown', function (e) {

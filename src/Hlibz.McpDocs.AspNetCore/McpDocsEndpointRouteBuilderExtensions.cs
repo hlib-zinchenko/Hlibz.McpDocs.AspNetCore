@@ -31,8 +31,16 @@ public static class McpDocsEndpointRouteBuilderExtensions
         var assets = Assets.Load(Encoding.UTF8.GetBytes(McpDocsTheme.Build(docs)), docs.PrintStyles);
         var catalogs = new ConcurrentDictionary<string, McpDocsCatalog>(); // keyed by PathBase
 
-        var group = endpoints.MapGroup(pattern);
         var basePath = "/" + pattern.Trim('/');
+        McpDocsCatalog GetCatalog(HttpContext ctx) => catalogs.GetOrAdd(ctx.Request.PathBase.Value ?? "", pb =>
+        {
+            var server = ctx.RequestServices.GetRequiredService<IOptions<McpServerOptions>>().Value;
+            var found = McpDocsEndpointDiscovery.Resolve(ctx.RequestServices, docs, basePath).Endpoint;
+            var endpoint = found.StartsWith('/') ? pb + found : found;
+            return new McpDocsCatalog(server, docs, endpoint, pb);
+        });
+
+        var group = endpoints.MapGroup(pattern);
 
         // Endpoints are only complete once the app has built its pipeline, so check when it starts.
         var services = endpoints.ServiceProvider;
@@ -59,18 +67,43 @@ public static class McpDocsEndpointRouteBuilderExtensions
 
         group.MapGet("/catalog.json", async ctx =>
         {
-            var pathBase = ctx.Request.PathBase.Value ?? "";
-            var catalog = catalogs.GetOrAdd(pathBase, pb =>
-            {
-                var server = ctx.RequestServices.GetRequiredService<IOptions<McpServerOptions>>().Value;
-                var found = McpDocsEndpointDiscovery.Resolve(ctx.RequestServices, docs, basePath).Endpoint;
-                var endpoint = found.StartsWith('/') ? pb + found : found;
-                return new McpDocsCatalog(server, docs, endpoint, pb);
-            });
+            var catalog = GetCatalog(ctx);
             // Content depends on the viewer once anything is [Authorize]d: never let a shared cache keep it.
             var result = await catalog.GetAsync(ctx);
             await Cached(ctx, result.Json, "application/json; charset=utf-8", result.ETag, "private, no-cache").ExecuteAsync(ctx);
         }).ExcludeFromDescription();
+
+        // Exports derived from the catalog, so they list exactly what this viewer's catalog.json does.
+        async Task<McpDocsExports.Source> Source(HttpContext ctx)
+        {
+            var catalog = GetCatalog(ctx);
+            var result = await catalog.GetAsync(ctx);
+            var req = ctx.Request;
+            return new McpDocsExports.Source(System.Text.Json.Nodes.JsonNode.Parse(result.Json)!, result.ETag, $"{req.Scheme}://{req.Host}", req.PathBase.Value ?? "", basePath);
+        }
+
+        group.MapGet("/catalog.md", async ctx =>
+        {
+            var s = await Source(ctx);
+            var body = Encoding.UTF8.GetBytes(McpDocsExports.Markdown(s));
+            await Cached(ctx, body, "text/markdown; charset=utf-8", McpDocsCatalog.ETagOf(body), "private, no-cache").ExecuteAsync(ctx);
+        }).ExcludeFromDescription();
+
+        // llms.txt convention, scoped to the docs group: a short index that links to catalog.md.
+        group.MapGet("/llms.txt", async ctx =>
+        {
+            var s = await Source(ctx);
+            var body = Encoding.UTF8.GetBytes(McpDocsExports.LlmsTxt(s));
+            await Cached(ctx, body, "text/plain; charset=utf-8", McpDocsCatalog.ETagOf(body), "private, no-cache").ExecuteAsync(ctx);
+        }).ExcludeFromDescription();
+
+        if (docs.RegistryName is not null)
+            group.MapGet("/server.json", async ctx =>
+            {
+                var s = await Source(ctx);
+                var body = Encoding.UTF8.GetBytes(McpDocsExports.ServerJson(s, docs.RegistryName));
+                await Cached(ctx, body, "application/json; charset=utf-8", McpDocsCatalog.ETagOf(body), "private, no-cache").ExecuteAsync(ctx);
+            }).ExcludeFromDescription();
 
         group.MapGet("/_assets/{file}", ctx =>
             (ctx.Request.RouteValues["file"] is string file && assets.Files.TryGetValue(file, out var a)

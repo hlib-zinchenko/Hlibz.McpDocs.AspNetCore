@@ -23,6 +23,19 @@ public sealed class McpDocsOptions
     /// <summary>When set, connect snippets include this header with <see cref="AuthPlaceholder"/>, e.g. <c>Authorization</c>.</summary>
     public string? AuthHeader { get; set; }
 
+    /// <summary>
+    /// Registry name in reverse-DNS form with one slash, e.g. <c>"io.github.acme/orders"</c>. When set, the page serves
+    /// <c>{pattern}/server.json</c>: a <c>server.json</c> for the MCP Registry with this server as a <c>remotes</c>
+    /// entry. Not set = no <c>server.json</c> (the registry requires a name we can't derive).
+    /// </summary>
+    public string? RegistryName { get; set; }
+
+    /// <summary>
+    /// Show "Add to VS Code" and "Add to Cursor" buttons beside the connect snippets. They open the editor's own
+    /// install dialog (<c>vscode:</c> / <c>cursor:</c> links); nothing is installed without the user confirming there.
+    /// </summary>
+    public bool InstallLinks { get; set; } = true;
+
     /// <summary>Placeholder value for <see cref="AuthHeader"/>.</summary>
     public string AuthPlaceholder { get; set; } = "Bearer <token>";
 
@@ -96,6 +109,8 @@ public sealed class McpDocsOptions
         foreach (var (name, value) in new[] { (nameof(PrimaryColor), PrimaryColor), (nameof(DarkModePrimaryColor), DarkModePrimaryColor) })
             if (value is not null && !McpDocsTheme.IsSafeColor(value))
                 throw new ArgumentException($"{name} '{value}' is not a hex, rgb(), hsl() or named colour.");
+        if (RegistryName is not null && !System.Text.RegularExpressions.Regex.IsMatch(RegistryName, @"^[a-zA-Z0-9.-]+/[a-zA-Z0-9._-]+$"))
+            throw new ArgumentException($"RegistryName '{RegistryName}' must look like 'io.github.acme/orders' (reverse-DNS namespace, one slash).");
         if (Favicon is not null && !McpDocsTheme.IsSafeFavicon(Favicon))
             throw new ArgumentException($"Favicon '{Favicon}' must start with https://, data:image/, ~/ or /.");
     }

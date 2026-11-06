@@ -1,0 +1,144 @@
+{
+  "server": {
+    "name": "test-server",
+    "title": "Test Server",
+    "version": "1.0.0"
+  },
+  "instructions": "Use the tools.",
+  "capabilities": {
+    "completions": false,
+    "subscribe": false
+  },
+  "docs": {
+    "showMeta": false,
+    "installLinks": true,
+    "title": "Test Server",
+    "mcpEndpoint": "/mcp",
+    "serverKey": "test-server",
+    "links": []
+  },
+  "tools": [
+    {
+      "definition": {
+        "name": "delete_thing",
+        "description": "Deletes a thing.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "description": "The id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ]
+        },
+        "annotations": {
+          "destructiveHint": true
+        }
+      },
+      "authorization": {
+        "roles": [
+          [
+            "admin"
+          ]
+        ]
+      }
+    },
+    {
+      "definition": {
+        "name": "get_thing",
+        "description": "Gets a thing.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "description": "The id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ]
+        },
+        "annotations": {
+          "readOnlyHint": true
+        }
+      }
+    },
+    {
+      "definition": {
+        "name": "ping",
+        "description": "",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        },
+        "annotations": {
+          "readOnlyHint": true
+        }
+      },
+      "issues": [
+        "No description."
+      ]
+    },
+    {
+      "definition": {
+        "name": "sloppy",
+        "description": "",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ]
+        }
+      },
+      "issues": [
+        "No description.",
+        "No annotations (readOnly / destructive / idempotent / openWorld hints).",
+        "Parameters without a description: id."
+      ]
+    }
+  ],
+  "prompts": [
+    {
+      "definition": {
+        "name": "greet",
+        "description": "Greets someone.",
+        "arguments": [
+          {
+            "name": "name",
+            "description": "Who",
+            "required": true
+          }
+        ]
+      }
+    }
+  ],
+  "resources": [
+    {
+      "definition": {
+        "name": "readme",
+        "uri": "docs://readme",
+        "description": "The readme.",
+        "mimeType": "application/octet-stream"
+      }
+    }
+  ],
+  "resourceTemplates": [
+    {
+      "definition": {
+        "name": "thing",
+        "uriTemplate": "thing://{id}",
+        "description": "A thing by id.",
+        "mimeType": "application/octet-stream"
+      }
+    }
+  ]
+}
