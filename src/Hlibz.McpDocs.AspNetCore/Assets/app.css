@@ -177,6 +177,22 @@ h4 small { text-transform: none; letter-spacing: 0; font-weight: 400; color: var
 .panel-title .btn:hover { color: var(--panel-text); }
 .code { margin: 0; background: var(--panel-2); border: 1px solid var(--panel-border); border-radius: 8px; padding: 14px 16px; overflow-x: auto; font-size: 12.5px; line-height: 1.6; color: var(--panel-text); white-space: pre; }
 .code .k { color: var(--tok-key); } .code .s { color: var(--tok-str); } .code .n { color: var(--tok-num); } .code .b { color: var(--tok-lit); }
+.panel-actions { display: flex; gap: 6px; }
+/* Foldable JSON: chevrons sit in a gutter in the left padding, one column like an editor's fold margin. */
+.code.json { padding-left: 26px; }
+.j-tog { position: relative; display: inline-block; width: 0; height: 1.6em; vertical-align: top; padding: 0; margin: 0; border: 0; background: none; font: inherit; color: var(--panel-muted); cursor: pointer; user-select: none; }
+.j-tog::before { content: ''; position: absolute; left: -22px; top: 1px; bottom: 1px; width: 18px; border-radius: 4px; }
+.j-tog::after { content: ''; position: absolute; left: -15px; top: 50%; width: 5px; height: 5px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(-75%) rotate(45deg); opacity: .6; transition: transform .12s ease; }
+.j-fold.shut > .j-tog::after { transform: translate(-25%, -50%) rotate(-45deg); }
+.j-tog:hover { color: var(--panel-text); }
+.j-tog:hover::before { background: var(--panel-border); }
+.j-tog:hover::after { opacity: 1; }
+.j-tog:focus-visible { outline: none; }
+.j-tog:focus-visible::before { outline: 2px solid var(--accent); }
+.j-sum { display: none; margin: 0 .3em; padding: 0 .6em; font: inherit; font-size: .88em; line-height: 1.45; color: var(--panel-muted); background: var(--panel); border: 1px solid var(--panel-border); border-radius: 999px; cursor: pointer; user-select: none; vertical-align: 1px; }
+.j-sum:hover { color: var(--panel-text); border-color: var(--panel-muted); }
+.j-fold.shut > .j-in { display: none; }
+.j-fold.shut > .j-sum { display: inline-block; }
 .panel-note { font-size: 12.5px; color: var(--panel-muted); margin: 8px 0 0; }
 .panel-note code { background: transparent; border-color: var(--panel-border); color: var(--panel-text); }
 

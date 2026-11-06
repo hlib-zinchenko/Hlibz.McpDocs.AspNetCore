@@ -18,3 +18,6 @@ h2, h3, h4 { break-after: avoid; }
 pre, table, .callout { break-inside: avoid; }
 a { color: inherit; text-decoration: underline; }
 a[href^="http"]::after { content: " (" attr(href) ")"; font-size: .85em; color: #555; }
+.code.json { padding-left: 16px; }
+.j-fold > .j-in { display: inline !important; }
+.j-tog, .j-sum { display: none !important; }

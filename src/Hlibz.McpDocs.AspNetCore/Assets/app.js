@@ -68,6 +68,39 @@
   }
   function codeBlock(text, isJson) { var pre = el('pre', { class: 'code' }); append(pre, isJson ? highlight(text) : text); return pre; }
 
+  // Foldable JSON with an editor-style gutter. Indentation and newlines stay real text and the controls
+  // carry none (chevrons are CSS, the "n keys" pill is hidden while open and unselectable), so selecting
+  // expanded JSON copies valid JSON. Alt+click folds or unfolds a node with everything inside it.
+  function setFold(f, open) { f.classList.toggle('shut', !open); f.firstChild.setAttribute('aria-expanded', String(open)); }
+  function jsonView(value) {
+    value = JSON.parse(JSON.stringify(value === undefined ? null : value));
+    function line(key, v, ind, comma) {
+      var head = [ind, key != null ? [el('span', { class: 'k', text: JSON.stringify(key) }), ': '] : null];
+      if (v === null || typeof v !== 'object')
+        return [head, el('span', { class: typeof v === 'string' ? 's' : typeof v === 'number' ? 'n' : 'b', text: JSON.stringify(v) }), comma];
+      var arr = Array.isArray(v), entries = arr ? v.map(function (x) { return [null, x]; }) : Object.keys(v).map(function (k) { return [k, v[k]]; });
+      var open = arr ? '[' : '{', close = arr ? ']' : '}';
+      if (!entries.length) return [head, open + close, comma];
+      var inner = el('span', { class: 'j-in' });
+      entries.forEach(function (e, i) { append(inner, ['\n', line(e[0], e[1], ind + '  ', i < entries.length - 1 ? ',' : '')]); });
+      append(inner, '\n' + ind);
+      var n = entries.length, count = n + (arr ? (n === 1 ? ' item' : ' items') : (n === 1 ? ' key' : ' keys'));
+      return el('span', { class: 'j-fold' },
+        el('button', { type: 'button', class: 'j-tog', 'aria-expanded': 'true', 'aria-label': key != null ? key + ' (' + count + ')' : count, title: 'Fold (Alt+click: everything inside)' }),
+        head, open, inner, el('button', { type: 'button', class: 'j-sum', tabindex: '-1', text: count, title: 'Unfold' }), close, comma);
+    }
+    var pre = el('pre', { class: 'code json' }, line(null, value, '', ''));
+    pre.addEventListener('click', function (e) {
+      var b = e.target.closest && e.target.closest('.j-tog, .j-sum');
+      if (!b) return;
+      var f = b.parentNode, open = f.classList.contains('shut');
+      setFold(f, open);
+      if (e.altKey) f.querySelectorAll('.j-fold').forEach(function (c) { setFold(c, open); });
+      if (open && b.classList.contains('j-sum')) f.firstChild.focus({ preventScroll: true });
+    });
+    return pre;
+  }
+
   function copyButton(getText) {
     return el('button', { class: 'btn', type: 'button', onclick: function (e) {
       var b = e.currentTarget, t = getText();
@@ -75,8 +108,26 @@
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done, function () {});
     } }, 'Copy');
   }
-  function panelBlock(title, text, isJson) {
-    return [el('div', { class: 'panel-title' }, el('span', { text: title }), copyButton(function () { return text; })), codeBlock(text, isJson)];
+  // A sample panel: foldable JSON, Copy, and one Collapse all / Expand all toggle when there is
+  // something below the top level to fold. Collapse all keeps the top level open.
+  function panelBlock(title, value) {
+    var text = JSON.stringify(value, null, 2), pre = jsonView(value);
+    var nested = function () { return pre.querySelectorAll('.j-fold .j-fold'); };
+    var all = null;
+    if (nested().length) {
+      var sync = function () {
+        all.textContent = [].some.call(nested(), function (f) { return !f.classList.contains('shut'); }) ? 'Collapse all' : 'Expand all';
+      };
+      all = el('button', { class: 'btn', type: 'button', text: 'Collapse all', onclick: function () {
+        var open = all.textContent === 'Expand all';
+        setFold(pre.querySelector('.j-fold'), true);
+        nested().forEach(function (f) { setFold(f, open); });
+        sync();
+      } });
+      pre.addEventListener('click', sync);
+    }
+    return [el('div', { class: 'panel-title' }, el('span', { text: title }),
+      el('span', { class: 'panel-actions' }, all, copyButton(function () { return text; }))), pre];
   }
 
   var ICON_SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
@@ -415,7 +466,7 @@
   }
 
   // ---------------------------------------------------------------- sections
-  function rpc(method, params) { return JSON.stringify({ jsonrpc: '2.0', id: 1, method: method, params: params }, null, 2); }
+  function rpc(method, params) { return { jsonrpc: '2.0', id: 1, method: method, params: params }; }
 
   function tokenBadge(t) {
     var n = toolTokens(t);
@@ -437,10 +488,10 @@
       metaBlock(t, SHOW_META));
 
     var args = example(t.inputSchema || {}, t.inputSchema || {}, 0, ['Root']);
-    var right = el('div', { class: 'r' }, panelBlock('Request', rpc('tools/call', { name: t.name, arguments: args || {} }), true));
+    var right = el('div', { class: 'r' }, panelBlock('Request', rpc('tools/call', { name: t.name, arguments: args || {} })));
     if (t.outputSchema) {
       var out = example(t.outputSchema, t.outputSchema, 0, ['Root']);
-      append(right, panelBlock('Response', JSON.stringify({ jsonrpc: '2.0', id: 1, result: { content: [{ type: 'text', text: JSON.stringify(out) }], structuredContent: out } }, null, 2), true));
+      append(right, panelBlock('Response', { jsonrpc: '2.0', id: 1, result: { content: [{ type: 'text', text: JSON.stringify(out) }], structuredContent: out } }));
     } else {
       append(right, el('p', { class: 'panel-note', html: 'Returns <code>content</code> blocks (usually text). No output schema declared.' }));
     }
@@ -467,7 +518,7 @@
       })) : el('p', { class: 'none', text: 'No arguments.' }),
       metaBlock(p, SHOW_META));
     var ex = {}; args.forEach(function (a) { ex[a.name] = 'string'; });
-    var right = el('div', { class: 'r' }, panelBlock('Request', rpc('prompts/get', { name: p.name, arguments: ex }), true));
+    var right = el('div', { class: 'r' }, panelBlock('Request', rpc('prompts/get', { name: p.name, arguments: ex })));
     return el('section', { class: 'row', id: 'prompt/' + p.name, 'data-nav': 'prompt/' + p.name }, left, right);
   }
 
@@ -489,7 +540,7 @@
       }))] : null,
       metaBlock(res, SHOW_META));
     var sampleUri = templated ? addr.replace(/\{[^}]+\}/g, function (m) { return m.replace(/[{}+#./;?&*]/g, '') === '' ? '' : 'example'; }) : addr;
-    var right = el('div', { class: 'r' }, panelBlock('Request', rpc('resources/read', { uri: sampleUri }), true));
+    var right = el('div', { class: 'r' }, panelBlock('Request', rpc('resources/read', { uri: sampleUri })));
     return el('section', { class: 'row', id: kind + '/' + res.name, 'data-nav': kind + '/' + res.name }, left, right);
   }
 
@@ -503,7 +554,7 @@
 
   function metaBlock(def, show) {
     if (!show || !def._meta || typeof def._meta !== 'object' || !Object.keys(def._meta).length) return null;
-    return [el('h4', null, 'Metadata', el('small', { text: '_meta' })), codeBlock(JSON.stringify(def._meta, null, 2), true)];
+    return [el('h4', null, 'Metadata', el('small', { text: '_meta' })), jsonView(def._meta)];
   }
 
   function fmtBytes(n) { return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1).replace(/\.0$/, '') + ' KB' : (n / 1048576).toFixed(1).replace(/\.0$/, '') + ' MB'; }

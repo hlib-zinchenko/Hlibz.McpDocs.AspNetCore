@@ -19,7 +19,7 @@ app.MapMcpDocs("/mcp-docs");   // that's the whole zero-config path
 ```
 
 - **Every tool, prompt, resource and template**, with parameter and result trees (recursive, `anyOf`,
-  maps and enums included), annotation badges, and an example request and response.
+  maps and enums included), annotation badges, and an example request and response you can fold.
 - **Connect snippets** for Claude Code, Claude Desktop, VS Code, Cursor and Goose, with
   one-click "Add to VS Code" and "Add to Cursor" buttons.
 - **`[Authorize]` is honoured.** A viewer only sees the primitives their MCP client would see.
@@ -54,7 +54,7 @@ dotnet add package Hlibz.McpDocs.AspNetCore
 With central package management, set the version in `Directory.Packages.props`:
 
 ```xml
-<PackageVersion Include="Hlibz.McpDocs.AspNetCore" Version="0.1.1" />
+<PackageVersion Include="Hlibz.McpDocs.AspNetCore" Version="0.1.2" />
 ```
 
 ## Quick start
