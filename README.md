@@ -1,23 +1,53 @@
+![Hlibz.McpDocs.AspNetCore icon](https://raw.githubusercontent.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/main/docs/icon.png)
+
 # Hlibz.McpDocs.AspNetCore
 
-A read-only, ReDoc-style documentation page for MCP servers hosted in ASP.NET Core.
-Shows what the server offers (tools, prompts, resources) and how to connect to it.
+**A read-only, ReDoc-style documentation page for an MCP server hosted in ASP.NET Core.** It shows
+what the server offers (tools, prompts, resources) and how to connect to it, from the registrations
+the MCP SDK already has, with nothing to write twice.
+
+[![CI](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/actions/workflows/ci.yml/badge.svg)](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/actions/workflows/ci.yml)
+[![NuGet](https://img.shields.io/nuget/vpre/Hlibz.McpDocs.AspNetCore.svg)](https://www.nuget.org/packages/Hlibz.McpDocs.AspNetCore)
+[![NuGet Downloads](https://img.shields.io/nuget/dt/Hlibz.McpDocs.AspNetCore.svg)](https://www.nuget.org/packages/Hlibz.McpDocs.AspNetCore)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/blob/main/LICENSE)
 
 ![The docs page for the sample server](https://raw.githubusercontent.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/main/docs/screenshot.jpg)
 
-> Status: early (0.1.0). Targets `net8.0`, which also runs in net9 and net10 apps.
-
-```bash
-dotnet add package Hlibz.McpDocs.AspNetCore
+```csharp
+app.MapMcp("/mcp");
+app.MapMcpDocs("/mcp-docs");   // that's the whole zero-config path
 ```
 
+- **Every tool, prompt, resource and template**, with parameter and result trees (recursive, `anyOf`,
+  maps and enums included), annotation badges, and an example request and response.
+- **Connect snippets** for Claude Code, Claude Desktop, VS Code, Cursor and Goose, with
+  one-click "Add to VS Code" and "Add to Cursor" buttons.
+- **`[Authorize]` is honoured.** A viewer only sees the primitives their MCP client would see.
+- **Exports for agents:** `catalog.json`, `catalog.md`, `llms.txt`, and a `server.json` for the MCP Registry.
+- **Checks your descriptions.** Missing descriptions and annotations are flagged on the page and logged at startup.
+- **Strict by default:** no inline script or style, a CSP that an existing one of yours always wins over.
+- Dark and light themes, accent colour, print styles, keyboard navigation.
+
+## Why
+
+An MCP client sees your server through `tools/list`, which is fine for a model and no use to the
+person deciding whether to connect to it. A hand-written page drifts the first time someone renames
+a parameter. This page is generated from the same registrations `tools/list` is, serialized with the
+SDK's own JSON options, so what it shows is what a client gets. A test in this repo diffs the two.
+
+## Install
+
 ```bash
-dotnet run --project samples/Sample.McpServer --launch-profile http
+dotnet add package Hlibz.McpDocs.AspNetCore --prerelease
 ```
 
-Then open http://localhost:5168/mcp-docs/ (raw data: http://localhost:5168/mcp-docs/catalog.json).
+With central package management, set the version in `Directory.Packages.props`:
 
-## Usage
+```xml
+<PackageVersion Include="Hlibz.McpDocs.AspNetCore" Version="0.1.0-preview.1" />
+```
+
+## Quick start
 
 ```csharp
 builder.Services.AddMcpServer(...).WithHttpTransport().WithToolsFromAssembly()...;
@@ -34,6 +64,12 @@ app.MapMcpDocs("/mcp-docs", o =>
 
 Group tools with `[McpDocsGroup("Orders")]` on the tool class or method.
 
+To try it, run the sample and open http://localhost:5168/mcp-docs/:
+
+```bash
+dotnet run --project samples/Sample.McpServer --launch-profile http
+```
+
 ## Options
 
 All optional. Set them in the `MapMcpDocs` callback.
@@ -48,6 +84,8 @@ All optional. Set them in the `MapMcpDocs` callback.
 | `AuthPlaceholder` | `Bearer <token>` | Placeholder value for `AuthHeader`. |
 | `AuthHint` | none | How to get credentials (Markdown subset). |
 | `ToolGroup` | `McpDocsGrouping.ByAttribute` | Sidebar group per tool; also `ByNamePrefix`, `None`, or your own function. |
+| `InstallLinks` | `true` | "Add to VS Code" / "Add to Cursor" buttons under the connect snippets. They open the editor's own install dialog; with `AuthHeader` set they carry the placeholder token. |
+| `RegistryName` | none | Reverse-DNS name (`io.github.acme/orders`); when set, `server.json` for the MCP Registry is served at `{pattern}/server.json` (one `streamable-http` remote, plus the auth header if configured). |
 | `ShowMeta` | `false` | Show each primitive's `_meta`; when off it is also left out of `catalog.json`. |
 | `CheckDescriptions` | `true` | Flag missing descriptions and annotations on the page and as startup warnings. |
 | `DefaultColorMode` | `System` | Colour mode for first-time viewers (`System`, `Light`, `Dark`). |
@@ -58,6 +96,18 @@ All optional. Set them in the `MapMcpDocs` callback.
 | `Favicon` | server icon | `https:` URL, `data:image/` URI or path (`~/` = `PathBase`). |
 | `AddToolbarItem(label, url, newTab)` | none | Link in the sidebar; `http(s)://`, `/path` or `~/path`. |
 | `PrintStyles` | `true` | Print light and plain, without the sidebar. |
+
+## Exports for agents
+
+Next to `catalog.json`, the same per-viewer catalog is rendered as:
+
+- `catalog.md`: every tool, prompt and resource as Markdown, with parameter tables, annotations and required roles.
+- `llms.txt`: a short index in the [llms.txt](https://llmstxt.org) shape that links to `catalog.md`. It lives under
+  the docs path (`/mcp-docs/llms.txt`), not at the site root; serve it from the root yourself if you want that.
+- `server.json`: for the MCP Registry, only when `RegistryName` is set.
+
+All three sit in the route group, so `.RequireAuthorization()` covers them and `[Authorize]` filtering applies.
+No `.well-known` server card: the proposal is still a draft and its path and shape differ between drafts.
 
 ## Authorization
 
@@ -102,64 +152,74 @@ The sample signs in with a demo cookie: `/demo/sign-in?roles=admin,finance`, `/d
 - **Render full CommonMark.** Markdown is a small safe subset.
 - **Mark which arguments support completion.** The SDK has one `CompleteHandler`, nothing per argument.
 
-## Tests
+## Testing your contract
+
+`McpDocsSnapshot.CreateAsync(app.Services, viewer: …)` returns the catalog as stable, indented JSON
+without an HTTP request. Compare it to a checked-in file (or pass it to Verify) and a renamed
+parameter, a changed output schema or a dropped `[Authorize]` fails the build, the MCP equivalent of
+an OpenAPI diff. [`tests/SnapshotTests.cs`](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/blob/main/tests/SnapshotTests.cs) does this for an
+anonymous and an admin viewer; `UPDATE_SNAPSHOTS=1 dotnet test` accepts a change.
+
+## Compatibility
+
+- Targets `net8.0`, which also runs in net9 and net10 apps. CI builds and tests on the .NET 8 runtime.
+- Built against `ModelContextProtocol.AspNetCore` 2.3.1. Authorization mirrors that version's
+  `AddAuthorizationFilters()`; if a newer SDK changes how it filters, update the package.
+- `IsAotCompatible`: endpoints are `RequestDelegate`s, and the library builds with no trim warnings.
+- Connect snippets follow the clients' current documentation (VS Code and Cursor install links, Goose
+  `config.yaml`). If one stops working after a client update, please open an issue.
+
+## Versioning
+
+The package follows [semantic versioning](https://semver.org). It is a preview: until 1.0, a minor
+version may change an option or the shape of `catalog.json`. `catalog.json`, `catalog.md` and
+`llms.txt` are generated output meant for tools and people, so snapshot tests of them are expected to
+change when you upgrade; review the diff, then accept it.
+
+## Development
 
 ```bash
-dotnet test
+dotnet build
+dotnet test tests/Hlibz.McpDocs.AspNetCore.Tests.csproj
 ```
 
-`tests/` runs a real server on `TestServer`: it asserts that `catalog.json` equals what an MCP client gets from
-`tools/list`, `prompts/list`, `resources/list` and `resources/templates/list` (anonymous and signed in), the status
-codes anonymous callers get on protected docs, the CSP rules, option validation, `PathBase` handling and endpoint
-discovery. CI (`.github/workflows/ci.yml`) builds, tests and packs; a `v*` tag pushes to NuGet (needs a
-`NUGET_API_KEY` secret). Visual regression tests are not written.
+`tests/` runs a real server on `TestServer`: it asserts that `catalog.json` equals what an MCP client
+gets from `tools/list`, `prompts/list`, `resources/list` and `resources/templates/list` (anonymous
+and signed in), the status codes anonymous callers get on protected docs, the CSP rules, option
+validation, `PathBase` handling, endpoint discovery and the exports.
 
-## Layout
+`tests/Visual` screenshots the page with Playwright (light, dark, mobile, recursive and polymorphic
+schemas) against baselines in `tests/Visual/Baselines/<os>/`. Font rendering differs per OS, so only
+the macOS baselines are checked in and CI doesn't run it. Install Chromium once, then run:
+
+```bash
+dotnet build tests/Visual
+tests/Visual/bin/Debug/net8.0/.playwright/node/darwin-arm64/node tests/Visual/bin/Debug/net8.0/.playwright/package/cli.js install chromium
+dotnet test tests/Visual
+```
+
+A missing baseline is written on first run; `UPDATE_SNAPSHOTS=1` accepts changes.
+
+CI ([`ci.yml`](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/blob/main/.github/workflows/ci.yml)) builds, tests and packs, and checks the
+package: README and icon in the nuspec, and the page assets embedded in the assembly. Pushing a `v*.*.*`
+tag runs [`release.yml`](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/blob/main/.github/workflows/release.yml), which publishes to NuGet with
+trusted publishing; the version comes from the tag.
 
 ```
 src/Hlibz.McpDocs.AspNetCore/
   McpDocsOptions.cs                          options, [McpDocsGroup], grouping strategies
   McpDocsCatalog.cs                          catalog.json from McpServerOptions collections, per viewer
   McpDocsAuthorization.cs                    [Authorize] evaluation, mirrors the SDK's list filters
-  McpDocsEndpointRouteBuilderExtensions.cs   MapMcpDocs: page, catalog.json, _assets/*
+  McpDocsEndpointRouteBuilderExtensions.cs   MapMcpDocs: page, catalog, exports, _assets/*
   McpDocsEndpointDiscovery.cs                finds the MapMcp route, startup checks
+  McpDocsExports.cs                          catalog.md, llms.txt, server.json
+  McpDocsSnapshot.cs                         public catalog snapshot for tests
   McpDocsTheme.cs                            theme.css from the options, value validation
   McpDocsQuality.cs                          description checks
   Assets/index.html, app.css, print.css, app.js   embedded UI (vanilla JS, no deps, no inline script)
-samples/Sample.McpServer/                    13 tools (incl. runtime-registered `ping`, recursive output,
-                                             dictionary input, polymorphic anyOf, [Authorize]d admin tools),
-                                             3 prompts, 2 resources, 1 template; demo cookie sign-in
+samples/Sample.McpServer/                    13 tools, 3 prompts, 2 resources, 1 template; demo cookie sign-in
 ```
 
-## What the proof of concept answered
+## License
 
-- **Data source works.** `IOptions<McpServerOptions>.Value.ToolCollection / PromptCollection / ResourceCollection`
-  are populated for both attribute-based and runtime-registered (`McpServerTool.Create`) primitives. Serializing
-  `ProtocolTool` etc. with `McpJsonUtilities.DefaultOptions` gives output **identical** to live `tools/list`,
-  `prompts/list`, `resources/list` and `resources/templates/list` (checked by diffing all four).
-- **No declaring type for grouping.** `AIFunctionMcpServerTool` (which has the `MethodInfo`) is internal, and
-  `Metadata` holds attribute *instances* only. So grouping reads our own `[McpDocsGroup]` from `Metadata` (class attributes
-  come before method attributes, so the method one wins). Runtime tools land in "Other".
-- **Schema renderer is most of the UI work, and doable.** ~250 lines cover nested objects, arrays, maps
-  (`additionalProperties`), `$ref` incl. the SDK's root-recursive `"$ref": "#"`, `anyOf`/`oneOf` variants,
-  nullable via type arrays, enum/const/default/min/max/pattern chips, and example generation for the right panel.
-- **Serving:** `catalog.json` cached per `PathBase` and set of visible primitives, ETag = SHA-256 of content → 304s; assets
-  `immutable` with a content-hash `?v=`; page CSP `script-src 'self'; style-src 'self'` holds (nothing inline);
-  `RequestDelegate` endpoints, so the library builds with `IsAotCompatible` and no trim warnings.
-
-## Page
-
-- Overview: title, version, description, model instructions, endpoint with copy, auth note.
-- Connect panel: Claude Code / Claude Desktop / VS Code / Cursor / Other, generated from endpoint + auth header.
-- Sidebar: grouped tools with risk dots (green read-only, amber modifies, red destructive), prompts, resources;
-  search (`/` to focus); scroll spy; deep links `#tool/<name>`.
-- Tool: annotation badges with spec defaults applied, parameters tree, result tree (when `outputSchema`),
-  example `tools/call` request and response.
-- Light/dark: system default (or `DefaultColorMode`), toggle remembered in `localStorage`.
-- Keyboard: `/` focuses search, arrow keys move through the sidebar and the connect tabs, skip link, visible focus.
-
-## Not done / open
-
-- Visual regression tests (Playwright).
-- Markdown is a small safe subset, not CommonMark.
-- Connect snippet formats are from memory — verify against current client docs before shipping.
+MIT

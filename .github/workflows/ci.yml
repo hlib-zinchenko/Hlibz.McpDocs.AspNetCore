@@ -1,40 +1,66 @@
-name: ci
+name: CI
 
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
+    branches: [main]
+
+# Read-only token: nothing in CI needs to write to the repository.
+permissions:
+  contents: read
+
+# One run per PR at a time: pushing again cancels the PR's run still in progress, so repeated
+# pushes can't pile up runs. Runs on main are never cancelled.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v5
+
+      # The library and its tests target net8.0; the sample app targets net10.0.
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: |
             8.0.x
             10.0.x
-      - run: dotnet build -c Release
-      - run: dotnet test -c Release --no-build
-      - run: dotnet pack src/Hlibz.McpDocs.AspNetCore -c Release --no-build -o artifacts
-      - uses: actions/upload-artifact@v4
-        with:
-          name: nuget
-          path: artifacts/*
 
-  publish:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: nuget
-          path: artifacts
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.0.x
-      # Needs a NUGET_API_KEY repository secret.
-      - run: dotnet nuget push "artifacts/*.nupkg" --api-key "${{ secrets.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      # tests/Visual (Playwright) is not run here: its screenshot baselines are per OS and only
+      # the macOS ones are checked in.
+      - name: Test
+        run: dotnet test tests/Hlibz.McpDocs.AspNetCore.Tests.csproj --no-build --configuration Release
+
+      - name: Pack
+        run: dotnet pack src/Hlibz.McpDocs.AspNetCore --no-build --configuration Release --output ./artifacts
+
+      # The README and icon nuget.org shows: at the package root and referenced by the nuspec,
+      # since dropping PackageIcon or PackageReadmeFile still packs.
+      - name: Package contents
+        run: |
+          unzip -l ./artifacts/*.nupkg > contents.txt
+          cat contents.txt
+          grep -qE " README\.md$" contents.txt
+          grep -qE " icon\.png$" contents.txt
+          unzip -p ./artifacts/*.nupkg '*.nuspec' > package.nuspec
+          grep -q "<readme>README.md</readme>" package.nuspec
+          grep -q "<icon>icon.png</icon>" package.nuspec
+
+      # The page is the package: an EmbeddedResource that stops matching its file still packs, and
+      # then every request for the page or its script fails.
+      - name: Package carries the page assets
+        run: |
+          unzip -p ./artifacts/Hlibz.McpDocs.AspNetCore.[0-9]*.nupkg 'lib/*/Hlibz.McpDocs.AspNetCore.dll' > lib.dll
+          for asset in index.html app.js app.css print.css; do
+            grep -aq "McpDocs.$asset" lib.dll || { echo "::error::McpDocs.$asset is not embedded in the assembly."; exit 1; }
+          done
