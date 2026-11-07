@@ -1,6 +1,4 @@
 using Microsoft.Playwright;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Xunit;
@@ -39,6 +37,26 @@ public class VisualTests : IAsyncLifetime
     private static string Os => RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "macos" : RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "windows" : "linux";
     private static string Dir([CallerFilePath] string file = "") => Path.Combine(Path.GetDirectoryName(file)!, "Baselines", Os);
 
+    // Returns [actualW, actualH, baselineW, baselineH, changedPixels].
+    private const string CompareJs = """
+        async ([a, b, tol]) => {
+          const load = async (b64) => {
+            const img = new Image();
+            img.src = 'data:image/png;base64,' + b64;
+            await img.decode();
+            const c = new OffscreenCanvas(img.width, img.height).getContext('2d');
+            c.drawImage(img, 0, 0);
+            return c.getImageData(0, 0, img.width, img.height);
+          };
+          const x = await load(a), y = await load(b);
+          if (x.width !== y.width || x.height !== y.height) return [x.width, x.height, y.width, y.height, 0];
+          let changed = 0;
+          for (let i = 0; i < x.data.length; i += 4)
+            if (Math.abs(x.data[i] - y.data[i]) > tol || Math.abs(x.data[i + 1] - y.data[i + 1]) > tol || Math.abs(x.data[i + 2] - y.data[i + 2]) > tol) changed++;
+          return [x.width, x.height, y.width, y.height, changed];
+        }
+        """;
+
     private async Task Check(string name, string hash, ColorScheme scheme, int width, int height)
     {
         await using var ctx = await _browser.NewContextAsync(new()
@@ -62,17 +80,13 @@ public class VisualTests : IAsyncLifetime
             return;
         }
 
-        using var a = Image.Load<Rgba32>(actual);
-        using var b = Image.Load<Rgba32>(path);
-        Assert.True(a.Width == b.Width && a.Height == b.Height, $"{name}: size {a.Width}x{a.Height} != baseline {b.Width}x{b.Height}");
-        long changed = 0;
-        for (var y = 0; y < a.Height; y++)
-            for (var x = 0; x < a.Width; x++)
-            {
-                var p = a[x, y]; var q = b[x, y];
-                if (Math.Abs(p.R - q.R) > ChannelTolerance || Math.Abs(p.G - q.G) > ChannelTolerance || Math.Abs(p.B - q.B) > ChannelTolerance) changed++;
-            }
-        var fraction = (double)changed / (a.Width * a.Height);
+        // Decode and compare in the browser (canvas) on a blank page, so the docs page's CSP doesn't apply
+        // and the tests need no image library.
+        var blank = await ctx.NewPageAsync();
+        var r = await blank.EvaluateAsync<int[]>(CompareJs, new object[] { Convert.ToBase64String(actual), Convert.ToBase64String(await File.ReadAllBytesAsync(path)), ChannelTolerance });
+        Assert.True(r[0] == r[2] && r[1] == r[3], $"{name}: size {r[0]}x{r[1]} != baseline {r[2]}x{r[3]}");
+        long changed = r[4];
+        var fraction = (double)changed / ((long)r[0] * r[1]);
         if (fraction > MaxChangedFraction)
         {
             var diff = Path.Combine(Path.GetTempPath(), name + ".actual.png");
