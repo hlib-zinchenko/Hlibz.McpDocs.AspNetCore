@@ -20,14 +20,19 @@ internal sealed class TestApp : IAsyncDisposable
 {
     public required WebApplication App { get; init; }
 
-    public static async Task<TestApp> StartAsync(Action<McpDocsOptions>? configure = null, bool requireAuth = false, Action<IApplicationBuilder>? beforeDocs = null)
+    public static async Task<TestApp> StartAsync(
+        Action<McpDocsOptions>? configure = null,
+        bool requireAuth = false,
+        Action<IApplicationBuilder>? beforeDocs = null,
+        string docsPattern = "/mcp-docs",
+        Action<IMcpServerBuilder>? server = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Logging.ClearProviders();
         builder.Services.AddAuthentication("Test").AddScheme<AuthenticationSchemeOptions, TestAuthHandler>("Test", null);
         builder.Services.AddAuthorization();
-        builder.Services.AddMcpServer(o =>
+        var mcp = builder.Services.AddMcpServer(o =>
             {
                 o.ServerInfo = new() { Name = "test-server", Title = "Test Server", Version = "1.0.0" };
                 o.ServerInstructions = "Use the tools.";
@@ -38,13 +43,14 @@ internal sealed class TestApp : IAsyncDisposable
             .WithPrompts<Prompts>()
             .WithResources<Resources>()
             .AddAuthorizationFilters();
+        server?.Invoke(mcp);
 
         var app = builder.Build();
         if (beforeDocs is not null) beforeDocs(app);
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapMcp("/mcp");
-        var group = app.MapMcpDocs("/mcp-docs", configure);
+        var group = app.MapMcpDocs(docsPattern, configure);
         if (requireAuth) group.RequireAuthorization();
         await app.StartAsync();
         return new TestApp { App = app };

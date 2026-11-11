@@ -21,10 +21,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The library and its tests target net8.0; the sample app targets net10.0.
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           dotnet-version: |
             8.0.x
@@ -44,23 +44,6 @@ jobs:
       - name: Pack
         run: dotnet pack src/Hlibz.McpDocs.AspNetCore --no-build --configuration Release --output ./artifacts
 
-      # The README and icon nuget.org shows: at the package root and referenced by the nuspec,
-      # since dropping PackageIcon or PackageReadmeFile still packs.
-      - name: Package contents
-        run: |
-          unzip -l ./artifacts/*.nupkg > contents.txt
-          cat contents.txt
-          grep -qE " README\.md$" contents.txt
-          grep -qE " icon\.png$" contents.txt
-          unzip -p ./artifacts/*.nupkg '*.nuspec' > package.nuspec
-          grep -q "<readme>README.md</readme>" package.nuspec
-          grep -q "<icon>icon.png</icon>" package.nuspec
-
-      # The page is the package: an EmbeddedResource that stops matching its file still packs, and
-      # then every request for the page or its script fails.
-      - name: Package carries the page assets
-        run: |
-          unzip -p ./artifacts/Hlibz.McpDocs.AspNetCore.[0-9]*.nupkg 'lib/*/Hlibz.McpDocs.AspNetCore.dll' > lib.dll
-          for asset in index.html app.js app.css print.css; do
-            grep -aq "McpDocs.$asset" lib.dll || { echo "::error::McpDocs.$asset is not embedded in the assembly."; exit 1; }
-          done
+      # README and icon in the nuspec, page assets embedded in the assembly. release.yml runs the same checks.
+      - name: Check package
+        run: bash .github/scripts/check-package.sh ./artifacts

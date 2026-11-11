@@ -1,4 +1,7 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Server;
+using System.ComponentModel;
 using System.Net;
 using System.Text.Json.Nodes;
 using Xunit;
@@ -35,6 +38,44 @@ public class ExportTests
         Assert.Contains("Type: `array of object`. Clients on protocol 2025-11-25 or older receive it wrapped as `{ \"result\": ... }`.", md);
         Assert.Contains("Each item:", md);
         Assert.Contains("| `id` | string | yes | Thing id |", md);
+    }
+
+    public record Category([property: Description("Category id")] string Id, [property: Description("Sub-categories")] List<Category> Children, Category? Parent);
+    public record Line([property: Description("Product SKU")] string Sku, int Quantity);
+    public record Order(Line[] Lines, Dictionary<string, Line> ByWarehouse, [property: Description("Ship to")] Address? ShipTo);
+    public record Address([property: Description("City name")] string City);
+
+    [McpServerToolType]
+    public sealed class NestedTools
+    {
+        [McpServerTool(Name = "save_category"), Description("Saves a category tree.")]
+        public string SaveCategory([Description("The tree")] Category category) => category.Id;
+
+        [McpServerTool(Name = "place_order"), Description("Places an order.")]
+        public string PlaceOrder([Description("The order")] Order order) => "ok";
+    }
+
+    [Fact]
+    public async Task Markdown_lists_nested_fields_and_stops_at_recursion()
+    {
+        await using var app = await TestApp.StartAsync(server: s => s.WithTools<NestedTools>());
+        var md = await app.Client().GetStringAsync("/mcp-docs/catalog.md");
+        var lines = md.Split('\n');
+        string Row(string name) => Assert.Single(lines, l => l.StartsWith("| `" + name + "` |"));
+
+        Assert.Contains("| object | yes | The tree |", Row("category"));
+        Assert.Contains("| string | yes | Category id |", Row("category.id"));
+        Assert.Contains("array of object (recursive)", Row("category.children"));
+        Assert.DoesNotContain(lines, l => l.StartsWith("| `category.children[]"));
+        // The SDK inlines the nullable parent once and refers back to it after that.
+        Assert.Contains("Category id", Row("category.parent.id"));
+        Assert.Contains("(recursive)", Row("category.parent.parent"));
+        Assert.DoesNotContain(lines, l => l.StartsWith("| `category.parent.parent."));
+
+        Assert.Contains("| string | yes | Product SKU |", Row("order.lines[].sku"));
+        Assert.Contains("integer", Row("order.lines[].quantity"));
+        Assert.Contains("Product SKU", Row("order.byWarehouse.<key>.sku"));
+        Assert.Contains("City name", Row("order.shipTo.city"));
     }
 
     [Fact]

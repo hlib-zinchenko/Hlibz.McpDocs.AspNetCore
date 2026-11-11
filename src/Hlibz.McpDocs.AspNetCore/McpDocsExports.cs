@@ -71,11 +71,12 @@ internal static class McpDocsExports
             else
             {
                 // Not an object (allowed since protocol 2026-07-28): a list or a bare value.
-                sb.Append("Type: `").Append(TypeOf(output)).Append("`. Clients on protocol 2025-11-25 or older receive it wrapped as `{ \"result\": ... }`.\n");
-                if (output["items"] is JsonObject { } items && Resolve(items, output)?["properties"] is JsonObject { Count: > 0 })
+                sb.Append("Type: `").Append(TypeOf(output, output)).Append("`. Clients on protocol 2025-11-25 or older receive it wrapped as `{ \"result\": ... }`.\n");
+                var (item, pointer) = Follow(output["items"], "#/items", output);
+                if (item?["properties"] is JsonObject { Count: > 0 })
                 {
                     sb.Append("\nEach item:\n\n");
-                    Parameters(sb, Resolve(items, output));
+                    Parameters(sb, item, output, pointer);
                 }
             }
         }
@@ -142,46 +143,153 @@ internal static class McpDocsExports
         if (parts.Count > 0) sb.Append("\nRequires: ").Append(string.Join("; ", parts)).Append('\n');
     }
 
-    private static void Parameters(StringBuilder sb, JsonNode? schema)
+    private const int MaxNesting = 6;
+
+    /// <summary>
+    /// A parameter table. Nested fields get their own rows under a path (<c>address.city</c>, <c>lines[].sku</c>,
+    /// <c>prices.&lt;key&gt;.amount</c>, <c>discount (option 2).amount</c>), following <c>$ref</c>; a type that
+    /// contains itself is marked recursive and not expanded again.
+    /// </summary>
+    private static void Parameters(StringBuilder sb, JsonNode? schema, JsonNode? root = null, string pointer = "#")
     {
-        if (schema?["properties"] is not JsonObject { Count: > 0 } props)
+        if (schema?["properties"] is not JsonObject { Count: > 0 })
         {
-            sb.Append(schema is null ? "None.\n" : "None (" + TypeOf(schema) + ").\n");
+            sb.Append(schema is null ? "None.\n" : "None (" + TypeOf(schema, root ?? schema) + ").\n");
             return;
         }
-        var required = (schema["required"] as JsonArray)?.Select(x => (string?)x).ToHashSet() ?? [];
         sb.Append("| Name | Type | Required | Description |\n|---|---|---|---|\n");
-        foreach (var (name, prop) in props)
-            sb.Append("| `").Append(name).Append("` | ").Append(Cell(TypeOf(prop))).Append(" | ")
-              .Append(required.Contains(name) ? "yes" : "no").Append(" | ").Append(Cell((string?)prop?["description"])).Append(" |\n");
+        Rows(sb, schema.AsObject(), root ?? schema, pointer, "", [pointer], 0);
     }
 
-    /// <summary>Follows a local <c>#/$defs/X</c> (or <c>#/definitions/X</c>) <c>$ref</c> against the root schema.</summary>
+    private static void Rows(StringBuilder sb, JsonObject obj, JsonNode root, string pointer, string prefix, HashSet<string> path, int depth)
+    {
+        if (obj["properties"] is not JsonObject props) return;
+        var required = (obj["required"] as JsonArray)?.Select(x => (string?)x).ToHashSet() ?? [];
+        foreach (var (name, raw) in props)
+        {
+            var p = pointer + "/properties/" + name.Replace("~", "~0").Replace("/", "~1");
+            var (s, sp) = Follow(raw, p, root);
+            var label = prefix + name;
+            var recursive = Target(s, sp, root) is { } target && path.Contains(target);
+            sb.Append("| `").Append(label).Append("` | ").Append(Cell(TypeOf(raw, root) + (recursive ? " (recursive)" : ""))).Append(" | ")
+              .Append(required.Contains(name) ? "yes" : "no").Append(" | ")
+              .Append(Cell((string?)raw?["description"] ?? (string?)s?["description"])).Append(" |\n");
+            if (!recursive && depth < MaxNesting) Expand(sb, s, sp, root, label, path, depth + 1);
+        }
+    }
+
+    /// <summary>Rows for what sits inside a value: an object's fields, an array's items, a map's values, union options.</summary>
+    private static void Expand(StringBuilder sb, JsonNode? s, string sp, JsonNode root, string label, HashSet<string> path, int depth)
+    {
+        (s, sp) = Single(s, sp, root);
+        if (s is not JsonObject o || path.Contains(sp)) return;
+        path.Add(sp);
+        if (o["properties"] is JsonObject { Count: > 0 })
+            Rows(sb, o, root, sp, label + ".", path, depth);
+        else if (o["items"] is JsonObject)
+        {
+            var (it, ip) = Follow(o["items"], sp + "/items", root);
+            Expand(sb, it, ip, root, label + "[]", path, depth);
+        }
+        else if (o["additionalProperties"] is JsonObject)
+        {
+            var (v, vp) = Follow(o["additionalProperties"], sp + "/additionalProperties", root);
+            Expand(sb, v, vp, root, label + ".<key>", path, depth);
+        }
+        else if (Variants(o, sp) is { } variants)
+            foreach (var (v, vp, i) in variants)
+            {
+                var (r, rp) = Follow(v, vp, root);
+                Expand(sb, r, rp, root, label + " (option " + (i + 1) + ")", path, depth);
+            }
+        path.Remove(sp);
+    }
+
+    /// <summary>The object an array, map or nullable wraps, by pointer: what "recursive" is checked against.</summary>
+    private static string? Target(JsonNode? s, string sp, JsonNode root)
+    {
+        for (var guard = 0; guard < 10; guard++)
+        {
+            (s, sp) = Single(s, sp, root);
+            if (s is not JsonObject o) return null;
+            if (o["properties"] is JsonObject || Variants(o, sp) is not null) return sp;
+            if (o["items"] is JsonObject) (s, sp) = Follow(o["items"], sp + "/items", root);
+            else if (o["additionalProperties"] is JsonObject) (s, sp) = Follow(o["additionalProperties"], sp + "/additionalProperties", root);
+            else return null;
+        }
+        return null;
+    }
+
+    /// <summary><c>anyOf</c>/<c>oneOf</c> options other than <c>null</c>, when there are two or more.</summary>
+    private static List<(JsonNode? Node, string Pointer, int Index)>? Variants(JsonObject o, string sp)
+    {
+        var options = NonNullOptions(o, sp);
+        return options is { Count: > 1 } ? options.Select((x, i) => (x.Node, x.Pointer, i)).ToList() : null;
+    }
+
+    /// <summary>Unwraps <c>anyOf: [X, null]</c> to X (after following any <c>$ref</c>).</summary>
+    private static (JsonNode? Node, string Pointer) Single(JsonNode? s, string sp, JsonNode root)
+    {
+        if (s is JsonObject o && NonNullOptions(o, sp) is { Count: 1 } options) return Follow(options[0].Node, options[0].Pointer, root);
+        return (s, sp);
+    }
+
+    private static List<(JsonNode? Node, string Pointer)>? NonNullOptions(JsonObject o, string sp)
+    {
+        foreach (var key in new[] { "anyOf", "oneOf" })
+            if (o[key] is JsonArray a)
+                return a.Select((v, i) => (Node: v, Pointer: $"{sp}/{key}/{i}")).Where(x => !IsNullType(x.Node)).ToList();
+        return null;
+    }
+
+    private static bool IsNullType(JsonNode? n) =>
+        n?["type"] is JsonValue v && v.TryGetValue<string>(out var t) && t == "null";
+
+    /// <summary>Follows local <c>$ref</c>s (any <c>#</c> pointer, as the SDK emits <c>#/properties/x</c>) to the schema and its pointer.</summary>
+    private static (JsonNode? Node, string Pointer) Follow(JsonNode? node, string pointer, JsonNode root)
+    {
+        for (var guard = 0; guard < 20 && (string?)node?["$ref"] is { } r && r.StartsWith('#'); guard++)
+        {
+            node = Resolve(node!, root);
+            pointer = r;
+        }
+        return (node, pointer);
+    }
+
+    /// <summary>Follows one local <c>$ref</c> (<c>#</c>, <c>#/$defs/X</c>, <c>#/properties/x</c>, …) against the root schema.</summary>
     private static JsonNode? Resolve(JsonNode node, JsonNode root)
     {
-        if ((string?)node["$ref"] is not { } r || !r.StartsWith("#/", StringComparison.Ordinal)) return node;
+        if ((string?)node["$ref"] is not { } r || !r.StartsWith('#')) return node;
         JsonNode? cur = root;
-        foreach (var part in r[2..].Split('/')) cur = cur?[part.Replace("~1", "/").Replace("~0", "~")];
+        foreach (var part in r[1..].Split('/', StringSplitOptions.RemoveEmptyEntries)) cur = cur?[part.Replace("~1", "/").Replace("~0", "~")];
         return cur;
     }
 
-    /// <summary>A short type label: <c>$ref</c> by name, arrays "of", unions joined, otherwise the schema <c>type</c>.</summary>
-    internal static string TypeOf(JsonNode? n)
+    /// <summary>
+    /// A short type label: a <c>$defs</c> reference by name, arrays "of", unions joined, otherwise the schema
+    /// <c>type</c>. Other local references are resolved against <paramref name="root"/> when it's given.
+    /// </summary>
+    internal static string TypeOf(JsonNode? n, JsonNode? root = null, int depth = 0)
     {
         if (n is not JsonObject o) return "any";
-        if ((string?)o["$ref"] is { } r) return r[(r.LastIndexOf('/') + 1)..];
+        if ((string?)o["$ref"] is { } r)
+        {
+            var named = r.StartsWith("#/$defs/", StringComparison.Ordinal) || r.StartsWith("#/definitions/", StringComparison.Ordinal);
+            if (named || root is null || depth > 4 || Resolve(o, root) is not { } target) return r == "#" ? "object" : r[(r.LastIndexOf('/') + 1)..];
+            return TypeOf(target, root, depth + 1);
+        }
         if (o["enum"] is JsonArray e) return "enum(" + string.Join(", ", e.Select(x => x?.ToJsonString())) + ")";
         foreach (var key in new[] { "anyOf", "oneOf" })
-            if (o[key] is JsonArray u) return string.Join(" | ", u.Select(TypeOf).Distinct());
+            if (o[key] is JsonArray u) return string.Join(" | ", u.Select(x => TypeOf(x, root, depth + 1)).Distinct());
         var t = o["type"] switch
         {
             JsonArray a => string.Join(" | ", a.Select(x => (string?)x)),
             { } x => (string?)x,
             _ => null,
         };
-        if (t == "array") return "array of " + TypeOf(o["items"]);
-        if (t == "object" && o["additionalProperties"] is JsonObject ap) return "map of " + TypeOf(ap);
-        return t ?? "any";
+        if (t == "array") return "array of " + TypeOf(o["items"], root, depth + 1);
+        if (t == "object" && o["additionalProperties"] is JsonObject ap) return "map of " + TypeOf(ap, root, depth + 1);
+        return t ?? (o["properties"] is JsonObject ? "object" : "any");
     }
 
     private static string Cell(string? text) =>

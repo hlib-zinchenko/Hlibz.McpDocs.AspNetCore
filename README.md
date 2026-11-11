@@ -54,7 +54,7 @@ dotnet add package Hlibz.McpDocs.AspNetCore
 With central package management, set the version in `Directory.Packages.props`:
 
 ```xml
-<PackageVersion Include="Hlibz.McpDocs.AspNetCore" Version="0.1.2" />
+<PackageVersion Include="Hlibz.McpDocs.AspNetCore" Version="0.1.3" />
 ```
 
 ## Quick start
@@ -88,7 +88,7 @@ All optional. Set them in the `MapMcpDocs` callback.
 |---|---|---|
 | `Title` | server title or name | Page title. |
 | `Description` | server instructions | Intro under the title (Markdown subset). |
-| `McpEndpoint` | found from `MapMcp` | Path or absolute URL used in the connect snippets. A path that matches no mapped route stops startup. |
+| `McpEndpoint` | found from `MapMcp` | Path or absolute URL used in the connect snippets. A path that matches no mapped route stops the app once it has started. |
 | `ServerKey` | server name | Key in the generated client configs, e.g. `acme-orders`. |
 | `AuthHeader` | none | Adds this header, with `AuthPlaceholder`, to the snippets. |
 | `AuthPlaceholder` | `Bearer <token>` | Placeholder value for `AuthHeader`. |
@@ -144,7 +144,7 @@ The sample signs in with a demo cookie: `/demo/sign-in?roles=admin,finance`, `/d
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| App exits at startup, critical log about `McpEndpoint` | The configured path matches no `MapMcp` route. | Fix the path, or remove `McpEndpoint` to use the discovered one. |
+| App stops right after starting, critical log about `McpEndpoint`; docs requests fail with the same message | The configured path matches no `MapMcp` route. | Fix the path, or remove `McpEndpoint` to use the discovered one. |
 | Warning: MCP endpoint requires authorization but the docs page doesn't | The page publishes the whole surface to anyone. | Add `.RequireAuthorization()` to `MapMcpDocs`, or accept it. |
 | Page shows fewer tools than `tools/list` | `[Authorize]` filtering uses the browser's identity (usually a cookie), not your MCP token; or the server uses a custom `ListToolsHandler`. | Sign in in the browser; custom handlers aren't visible to the page. |
 | Connect snippets show the wrong URL behind a proxy | `PathBase` or host differs from what the browser sees. | Set `McpEndpoint` to the public URL. |
@@ -176,7 +176,8 @@ anonymous and an admin viewer; `UPDATE_SNAPSHOTS=1 dotnet test` accepts a change
 
 - Targets `net8.0`, which also runs in net9 and net10 apps. CI builds and tests on the .NET 8 runtime.
 - Built against `ModelContextProtocol.AspNetCore` 2.3.1. Authorization mirrors that version's
-  `AddAuthorizationFilters()`; if a newer SDK changes how it filters, update the package.
+  `AddAuthorizationFilters()`; if a newer SDK changes how it filters, update the package. A weekly CI job
+  runs the tests against the newest stable SDK to catch that early.
 - `IsAotCompatible`: endpoints are `RequestDelegate`s, and the library builds with no trim warnings.
 - Connect snippets follow the clients' current documentation (VS Code and Cursor install links, Goose
   `config.yaml`). If one stops working after a client update, please open an issue.
@@ -213,9 +214,11 @@ dotnet test tests/Visual
 A missing baseline is written on first run; `UPDATE_SNAPSHOTS=1` accepts changes.
 
 CI ([`ci.yml`](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/blob/main/.github/workflows/ci.yml)) builds, tests and packs, and checks the
-package: README and icon in the nuspec, and the page assets embedded in the assembly. Pushing a `v*.*.*`
-tag runs [`release.yml`](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/blob/main/.github/workflows/release.yml), which publishes to NuGet with
-trusted publishing; the version comes from the tag.
+package with [`check-package.sh`](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/blob/main/.github/scripts/check-package.sh): README and icon
+in the nuspec, and the page assets embedded in the assembly. Pushing a `v*.*.*` tag runs
+[`release.yml`](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/blob/main/.github/workflows/release.yml), which runs the same checks and publishes to
+NuGet with trusted publishing; the version comes from the tag. [`sdk-latest.yml`](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/blob/main/.github/workflows/sdk-latest.yml)
+runs the tests weekly against the newest MCP SDK. Actions are pinned by commit SHA; Dependabot keeps them current.
 
 ```
 src/Hlibz.McpDocs.AspNetCore/
@@ -229,7 +232,7 @@ src/Hlibz.McpDocs.AspNetCore/
   McpDocsTheme.cs                            theme.css from the options, value validation
   McpDocsQuality.cs                          description checks
   Assets/index.html, app.css, print.css, app.js   embedded UI (vanilla JS, no deps, no inline script)
-samples/Sample.McpServer/                    13 tools, 3 prompts, 2 resources, 1 template; demo cookie sign-in
+samples/Sample.McpServer/                    13 tools, 3 prompts, 2 resources, 2 templates; demo cookie sign-in
 ```
 
 ## License

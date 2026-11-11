@@ -55,6 +55,9 @@ code, pre, kbd { font-family: var(--mono); }
 button { font: inherit; color: inherit; cursor: pointer; }
 .boot { padding: 48px; color: var(--muted); }
 .error { margin: 48px; padding: 16px 20px; border-radius: 8px; background: var(--danger-bg); color: var(--danger); }
+.row .error { margin: 12px 0; }
+/* Off-screen buffer for copying where navigator.clipboard isn't available (plain http). */
+.copy-buf { position: fixed; top: 0; left: 0; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; pointer-events: none; }
 
 /* ---------- layout ---------- */
 .layout { display: flex; min-height: 100vh; }

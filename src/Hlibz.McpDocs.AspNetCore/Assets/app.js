@@ -101,11 +101,31 @@
     return pre;
   }
 
+  // navigator.clipboard exists only in a secure context (https, localhost). Over plain http, or when it refuses,
+  // copy through a hidden textarea. Resolves to whether the text was copied.
+  function copyText(t) {
+    if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText)
+      return navigator.clipboard.writeText(t).then(function () { return true; }, function () { return legacyCopy(t); });
+    return Promise.resolve(legacyCopy(t));
+  }
+  function legacyCopy(t) {
+    var focused = document.activeElement, ok = false;
+    var ta = el('textarea', { class: 'copy-buf', readonly: true, 'aria-hidden': 'true', tabindex: '-1' });
+    ta.value = t;
+    document.body.appendChild(ta);
+    ta.select();
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    ta.remove();
+    if (focused && focused.focus) focused.focus({ preventScroll: true });
+    return ok;
+  }
   function copyButton(getText) {
     return el('button', { class: 'btn', type: 'button', onclick: function (e) {
-      var b = e.currentTarget, t = getText();
-      var done = function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1400); };
-      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done, function () {});
+      var b = e.currentTarget;
+      copyText(getText()).then(function (ok) {
+        b.textContent = ok ? 'Copied' : 'Copy failed';
+        setTimeout(function () { b.textContent = 'Copy'; }, 1400);
+      });
     } }, 'Copy');
   }
   // A sample panel: foldable JSON, Copy, and one Collapse all / Expand all toggle when there is
@@ -473,12 +493,40 @@
     return el('span', { class: 'badge ' + (n >= HEAVY_TOKENS ? 'warn' : 'plain'), title: 'Estimated size of this tool\u2019s definition in the model\u2019s context (name, description, input schema; about 4 characters per token)', text: '~' + fmtTokens(n) + ' tokens' });
   }
 
+  // Element ids and links. Tool and prompt names are unique, but resource names need not be (a resource is
+  // identified by its URI), so a repeated name gets a suffix: resource/files, resource/files-2.
+  function assignIds(lists) {
+    var used = {};
+    lists.forEach(function (l) {
+      l[1].forEach(function (e) {
+        var name = String((e.definition && e.definition.name) || l[0]), key = name, n = 1;
+        while (used[l[0] + '/' + key]) key = name + '-' + (++n);
+        used[l[0] + '/' + key] = true;
+        e._id = l[0] + '/' + key;
+      });
+    });
+  }
+  function hrefOf(id) { var i = id.indexOf('/'); return '#' + (i < 0 ? id : id.slice(0, i + 1) + encodeURIComponent(id.slice(i + 1))); }
+  function idFromHash(hash) { var s = hash.slice(1); try { return decodeURIComponent(s); } catch (e) { return s; } }
+
+  // One primitive that fails to render (an unexpected schema) becomes an error row, not a blank page.
+  function safeSection(build, entry, what) {
+    try { return build(entry); }
+    catch (e) {
+      if (window.console) console.error(e);
+      var name = (entry.definition && entry.definition.name) || what;
+      return el('section', { class: 'row', id: entry._id, 'data-nav': entry._id },
+        el('div', { class: 'l' }, el('h3', { class: 'op-name', text: name }), el('p', { class: 'error', text: 'Could not show this ' + what + ': ' + e.message })),
+        el('div', { class: 'r' }));
+    }
+  }
+
   function toolSection(entry) {
     var t = entry.definition;
     var r = risk(t);
     var title = t.title || (t.annotations && t.annotations.title);
     var left = el('div', { class: 'l' },
-      el('h3', { class: 'op-name' }, t.name, el('a', { class: 'anchor', href: '#tool/' + encodeURIComponent(t.name), 'aria-label': 'Link to ' + t.name, text: '#' })),
+      el('h3', { class: 'op-name' }, t.name, el('a', { class: 'anchor', href: hrefOf(entry._id), 'aria-label': 'Link to ' + t.name, text: '#' })),
       title ? el('p', { class: 'op-title', text: title }) : null,
       badgeRow(r.badges, [lockBadge(entry.authorization), issueBadge(entry), tokenBadge(t)]),
       mdEl('div', '', t.description),
@@ -498,14 +546,14 @@
     // MCP declares no error shape: a failed call is a normal result with isError and (usually text) content.
     append(right, el('p', { class: 'panel-note', html: 'On failure: <code>isError: true</code> with text <code>content</code>.' +
       (t.outputSchema ? ' The output schema does not cover errors.' : '') }));
-    return el('section', { class: 'row', id: 'tool/' + t.name, 'data-nav': 'tool/' + t.name }, left, right);
+    return el('section', { class: 'row', id: entry._id, 'data-nav': entry._id }, left, right);
   }
 
   function promptSection(entry) {
     var p = entry.definition;
     var args = p.arguments || [];
     var left = el('div', { class: 'l' },
-      el('h3', { class: 'op-name' }, p.name, el('a', { class: 'anchor', href: '#prompt/' + encodeURIComponent(p.name), text: '#' })),
+      el('h3', { class: 'op-name' }, p.name, el('a', { class: 'anchor', href: hrefOf(entry._id), 'aria-label': 'Link to ' + p.name, text: '#' })),
       p.title ? el('p', { class: 'op-title', text: p.title }) : null,
       el('div', { class: 'badges' }, lockBadge(entry.authorization), issueBadge(entry), el('span', { class: 'badge plain', text: 'Prompt' })),
       mdEl('div', '', p.description),
@@ -519,16 +567,41 @@
       metaBlock(p, SHOW_META));
     var ex = {}; args.forEach(function (a) { ex[a.name] = 'string'; });
     var right = el('div', { class: 'r' }, panelBlock('Request', rpc('prompts/get', { name: p.name, arguments: ex })));
-    return el('section', { class: 'row', id: 'prompt/' + p.name, 'data-nav': 'prompt/' + p.name }, left, right);
+    return el('section', { class: 'row', id: entry._id, 'data-nav': entry._id }, left, right);
+  }
+
+  // RFC 6570 URI templates: {var}, {+var}, {#var}, {.var}, {/var}, {;var}, {?a,b}, {&a}, with :n and * modifiers.
+  // Query variables ({?…}, {&…}) are optional; the others are part of the address and required.
+  var URI_OPS = { '': ['', ','], '+': ['', ','], '#': ['#', ','], '.': ['.', '.'], '/': ['/', '/'], ';': [';', ';'], '?': ['?', '&'], '&': ['&', '&'] };
+  function uriExpressions(template) {
+    return (String(template).match(/\{[^}]*\}/g) || []).map(function (x) {
+      var body = x.slice(1, -1), op = URI_OPS.hasOwnProperty(body.charAt(0)) && body.charAt(0) ? body.charAt(0) : '';
+      var names = body.slice(op.length).split(',').map(function (v) { return v.replace(/(:\d+|\*)$/, '').trim(); }).filter(Boolean);
+      return { text: x, op: op, names: names };
+    });
+  }
+  function uriVariables(template) {
+    var out = [], seen = {};
+    uriExpressions(template).forEach(function (x) {
+      x.names.forEach(function (n) { if (!seen[n]) { seen[n] = true; out.push({ name: n, required: x.op !== '?' && x.op !== '&' }); } });
+    });
+    return out;
+  }
+  function uriExample(template) {
+    var exprs = uriExpressions(template), i = 0;
+    return String(template).replace(/\{[^}]*\}/g, function () {
+      var x = exprs[i++], named = x.op === ';' || x.op === '?' || x.op === '&';
+      if (!x.names.length) return '';
+      return URI_OPS[x.op][0] + x.names.map(function (n) { return named ? n + '=example' : 'example'; }).join(URI_OPS[x.op][1]);
+    });
   }
 
   function resourceSection(entry, templated) {
     var res = entry.definition;
-    var kind = templated ? 'template' : 'resource';
     var addr = templated ? res.uriTemplate : res.uri;
-    var vars = templated ? (addr.match(/\{[^}]+\}/g) || []).map(function (v) { return v.replace(/[{}+#./;?&*]/g, ''); }) : [];
+    var vars = templated ? uriVariables(addr) : [];
     var left = el('div', { class: 'l' },
-      el('h3', { class: 'op-name' }, res.name, el('a', { class: 'anchor', href: '#' + kind + '/' + encodeURIComponent(res.name), text: '#' })),
+      el('h3', { class: 'op-name' }, res.name, el('a', { class: 'anchor', href: hrefOf(entry._id), 'aria-label': 'Link to ' + res.name, text: '#' })),
       res.title ? el('p', { class: 'op-title', text: res.title }) : null,
       el('div', { class: 'badges' }, lockBadge(entry.authorization), issueBadge(entry), el('span', { class: 'badge plain', text: templated ? 'Resource template' : 'Resource' }),
         res.mimeType ? el('span', { class: 'badge plain', text: res.mimeType }) : null),
@@ -536,12 +609,12 @@
       mdEl('div', '', res.description),
       annotationRows(res).length ? el('dl', { class: 'facts' }, annotationRows(res).map(function (r) { return [el('dt', { text: r[0] }), el('dd', { text: r[1] })]; })) : null,
       vars.length ? [el('h4', null, 'Variables'), el('div', { class: 'props' }, vars.map(function (v) {
-        return el('div', { class: 'prop' }, el('div', { class: 'prop-head' }, el('span', { class: 'prop-name', text: v }), el('span', { class: 'prop-type', text: 'string' }), el('span', { class: 'req', text: 'required' })));
+        return el('div', { class: 'prop' }, el('div', { class: 'prop-head' }, el('span', { class: 'prop-name', text: v.name }), el('span', { class: 'prop-type', text: 'string' }),
+          v.required ? el('span', { class: 'req', text: 'required' }) : el('span', { class: 'opt', text: 'optional' })));
       }))] : null,
       metaBlock(res, SHOW_META));
-    var sampleUri = templated ? addr.replace(/\{[^}]+\}/g, function (m) { return m.replace(/[{}+#./;?&*]/g, '') === '' ? '' : 'example'; }) : addr;
-    var right = el('div', { class: 'r' }, panelBlock('Request', rpc('resources/read', { uri: sampleUri })));
-    return el('section', { class: 'row', id: kind + '/' + res.name, 'data-nav': kind + '/' + res.name }, left, right);
+    var right = el('div', { class: 'r' }, panelBlock('Request', rpc('resources/read', { uri: templated ? uriExample(addr) : addr })));
+    return el('section', { class: 'row', id: entry._id, 'data-nav': entry._id }, left, right);
   }
 
   // Rough cost of a tool in a model's context: name, description and input schema, ~4 characters per token.
@@ -603,10 +676,9 @@
   }
   function qualityPanel(cat) {
     var rows = [];
-    [['tool', 'tools', function (d) { return d.name; }], ['prompt', 'prompts', function (d) { return d.name; }],
-     ['resource', 'resources', function (d) { return d.name; }], ['template', 'resourceTemplates', function (d) { return d.name; }]].forEach(function (k) {
-      (cat[k[1]] || []).forEach(function (e) {
-        if (e.issues && e.issues.length) rows.push(el('li', null, el('a', { href: '#' + k[0] + '/' + encodeURIComponent(k[2](e.definition)), text: k[2](e.definition) }), ' ' + e.issues.join(' ')));
+    ['tools', 'prompts', 'resources', 'resourceTemplates'].forEach(function (k) {
+      (cat[k] || []).forEach(function (e) {
+        if (e.issues && e.issues.length) rows.push(el('li', null, el('a', { href: hrefOf(e._id), text: e.definition.name }), ' ' + e.issues.join(' ')));
       });
     });
     if (!rows.length) return null;
@@ -634,6 +706,7 @@
     var server = cat.server || {};
     var d = cat.docs || {};
     var tools = cat.tools || [], prompts = cat.prompts || [], resources = cat.resources || [], templates = cat.resourceTemplates || [];
+    assignIds([['tool', tools], ['prompt', prompts], ['resource', resources], ['template', templates]]);
     var groups = groupTools(tools);
     SHOW_META = d.showMeta === true;
     var title = d.title || server.title || server.name || 'MCP server';
@@ -647,7 +720,7 @@
     // --- sidebar
     var navItems = [];
     function navItem(id, name, kind, dot, searchText, auth, icons) {
-      var a = el('a', { class: 'nav-item', href: '#' + id, 'data-target': id, 'data-search': (name + ' ' + (searchText || '') + ' ' + authSearch(auth)).toLowerCase() },
+      var a = el('a', { class: 'nav-item', href: hrefOf(id), 'data-target': id, 'data-search': (name + ' ' + (searchText || '') + ' ' + authSearch(auth)).toLowerCase() },
         dot !== null ? el('span', { class: 'dot ' + (dot || '') }) : null,
         iconEl(icons),
         el('span', { class: 'nm', text: name, title: name }),
@@ -662,16 +735,16 @@
       el('div', { class: 'nav-label' }, el('span', { text: 'Tools' }), el('span', { text: String(tools.length) })),
       groups.map(function (g) {
         return el('div', { 'data-group': '' }, g.name ? el('div', { class: 'nav-group', text: g.name }) : null,
-          g.items.map(function (e) { var t = e.definition; return navItem('tool/' + t.name, t.name, null, risk(t).level, [t.title, t.description, g.name].join(' '), e.authorization, t.icons); }));
+          g.items.map(function (e) { var t = e.definition; return navItem(e._id, t.name, null, risk(t).level, [t.title, t.description, g.name].concat(paramNames(t.inputSchema)).join(' '), e.authorization, t.icons); }));
       })));
     if (prompts.length) append(nav, el('div', { class: 'nav-section', 'data-section': '' },
       el('div', { class: 'nav-label' }, el('span', { text: 'Prompts' }), el('span', { text: String(prompts.length) })),
-      el('div', { 'data-group': '' }, prompts.map(function (e) { var p = e.definition; return navItem('prompt/' + p.name, p.name, null, null, [p.title, p.description].join(' '), e.authorization, p.icons); }))));
+      el('div', { 'data-group': '' }, prompts.map(function (e) { var p = e.definition; return navItem(e._id, p.name, null, null, [p.title, p.description].concat((p.arguments || []).map(function (a) { return a.name; })).join(' '), e.authorization, p.icons); }))));
     if (resources.length + templates.length) append(nav, el('div', { class: 'nav-section', 'data-section': '' },
       el('div', { class: 'nav-label' }, el('span', { text: 'Resources' }), el('span', { text: String(resources.length + templates.length) })),
       el('div', { 'data-group': '' },
-        resources.map(function (e) { var r = e.definition; return navItem('resource/' + r.name, r.name, null, null, [r.title, r.description, r.uri].join(' '), e.authorization, r.icons); }),
-        templates.map(function (e) { var r = e.definition; return navItem('template/' + r.name, r.name, '{ }', null, [r.title, r.description, r.uriTemplate].join(' '), e.authorization, r.icons); }))));
+        resources.map(function (e) { var r = e.definition; return navItem(e._id, r.name, null, null, [r.title, r.description, r.uri].join(' '), e.authorization, r.icons); }),
+        templates.map(function (e) { var r = e.definition; return navItem(e._id, r.name, '{ }', null, [r.title, r.description, r.uriTemplate].join(' '), e.authorization, r.icons); }))));
     var empty = el('div', { class: 'nav-empty', role: 'status', text: 'No matches.', hidden: true });
     append(nav, empty);
 
@@ -731,6 +804,7 @@
       el('div', { class: 'meta' },
         server.version ? el('span', null, 'Version ', el('b', { text: server.version })) : null,
         server.name && server.name !== title ? el('span', null, 'Server ', el('b', { text: server.name })) : null,
+        cat.protocolVersion ? el('span', { title: 'MCP protocol version the server is configured for' }, 'Protocol ', el('b', { text: cat.protocolVersion })) : null,
         counts.length ? el('span', { text: counts.join(' · ') }) : null),
       capChips(cat.capabilities),
       tools.length ? el('p', { class: 'cost', title: 'Name, description and input schema of every tool, about 4 characters per token. An estimate.' },
@@ -750,21 +824,25 @@
       append(main, heading('tools', 'Tools', tools.length));
       groups.forEach(function (g) {
         if (g.name) append(main, el('div', { class: 'row heading' }, el('div', { class: 'l' }, el('h3', { class: 'group', text: g.name })), el('div', { class: 'r' })));
-        g.items.forEach(function (e) { append(main, toolSection(e)); });
+        g.items.forEach(function (e) { append(main, safeSection(toolSection, e, 'tool')); });
       });
     }
-    if (prompts.length) { append(main, heading('prompts', 'Prompts', prompts.length)); prompts.forEach(function (p) { append(main, promptSection(p)); }); }
+    if (prompts.length) { append(main, heading('prompts', 'Prompts', prompts.length)); prompts.forEach(function (p) { append(main, safeSection(promptSection, p, 'prompt')); }); }
     if (resources.length + templates.length) {
       append(main, heading('resources', 'Resources', resources.length + templates.length));
-      resources.forEach(function (r) { append(main, resourceSection(r, false)); });
-      templates.forEach(function (r) { append(main, resourceSection(r, true)); });
+      resources.forEach(function (r) { append(main, safeSection(function (e) { return resourceSection(e, false); }, r, 'resource')); });
+      templates.forEach(function (r) { append(main, safeSection(function (e) { return resourceSection(e, true); }, r, 'resource template')); });
     }
 
     var layout = el('div', { class: 'layout' }, sidebar, el('div', { class: 'content-wrap', style: null }));
     var menuBtn = el('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Menu', 'aria-expanded': 'false', 'aria-controls': 'sidebar', html: ICON_MENU, onclick: function () { menuBtn.setAttribute('aria-expanded', String(layout.classList.toggle('nav-open'))); } });
     var topbar = el('div', { class: 'topbar' }, menuBtn, el('strong', { text: title }));
     layout.replaceChild(el('div', { class: 'content' }, topbar, main), layout.lastChild);
-    nav.addEventListener('click', function (e) { if (e.target.closest('.nav-item')) layout.classList.remove('nav-open'); menuBtn.setAttribute('aria-expanded', 'false'); });
+    nav.addEventListener('click', function (e) {
+      if (!e.target.closest('.nav-item')) return;
+      layout.classList.remove('nav-open');
+      menuBtn.setAttribute('aria-expanded', 'false');
+    });
     app.replaceChildren(el('a', { class: 'skip', href: '#main', onclick: function (e) { e.preventDefault(); main.focus(); main.scrollIntoView(); } , text: 'Skip to content' }), layout);
 
     // --- scroll spy + deep links
@@ -785,16 +863,23 @@
     main.querySelectorAll('[data-nav]').forEach(function (s) { observer.observe(s); });
 
     if (location.hash.length > 1) {
-      var target = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+      var target = document.getElementById(idFromHash(location.hash));
       if (target) target.scrollIntoView();
     }
   }
 
+  function paramNames(schema) {
+    return schema && schema.properties && typeof schema.properties === 'object' ? Object.keys(schema.properties) : [];
+  }
+
   function init() {
     var app = document.getElementById('app');
+    function fail(text) { app.replaceChildren(el('div', { class: 'error', text: text })); }
     fetch(app.getAttribute('data-catalog'), { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
       .then(function (r) { if (!r.ok) throw new Error(r.status + ' ' + r.statusText); return r.json(); })
-      .then(function (cat) { render(app, cat); })
-      .catch(function (e) { app.replaceChildren(el('div', { class: 'error', text: 'Could not load the server catalog: ' + e.message })); });
+      .then(function (cat) {
+        try { render(app, cat); }
+        catch (e) { if (window.console) console.error(e); fail('Could not show the server catalog: ' + e.message); }
+      }, function (e) { fail('Could not load the server catalog: ' + e.message); });
   }
 })();

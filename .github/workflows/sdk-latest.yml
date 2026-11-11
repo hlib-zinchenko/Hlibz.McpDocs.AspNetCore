@@ -1,0 +1,35 @@
+name: Latest MCP SDK
+
+# The package is built against ModelContextProtocol.AspNetCore 2.3.1 but installs into apps on any newer
+# version, and its [Authorize] filtering and endpoint discovery mirror that SDK's internals. This runs the
+# tests against the newest stable SDK, so a change there shows up here before a user reports it.
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-latest-sdk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      # No version: the newest stable release. The sample keeps its own pin and isn't built here.
+      - name: Use the newest SDK
+        run: |
+          dotnet add src/Hlibz.McpDocs.AspNetCore package ModelContextProtocol.AspNetCore
+          dotnet add tests/Hlibz.McpDocs.AspNetCore.Tests.csproj package ModelContextProtocol.AspNetCore
+          grep -h "ModelContextProtocol.AspNetCore" src/Hlibz.McpDocs.AspNetCore/*.csproj tests/*.csproj
+
+      - name: Test
+        run: dotnet test tests/Hlibz.McpDocs.AspNetCore.Tests.csproj --configuration Release
