@@ -35,9 +35,9 @@ public static class McpDocsEndpointRouteBuilderExtensions
         configure?.Invoke(docs);
         docs.Validate();
 
-        var assets = Assets.Load(Encoding.UTF8.GetBytes(McpDocsTheme.Build(docs)), docs.PrintStyles);
+        var assets = McpDocsAssets.Load(docs);
         var catalogs = new ConcurrentDictionary<string, McpDocsCatalog>(); // keyed by PathBase
-        var exports = new ConcurrentDictionary<string, Asset>(StringComparer.Ordinal);
+        var exports = new ConcurrentDictionary<string, McpDocsAsset>(StringComparer.Ordinal);
 
         var basePath = "/" + pattern.Trim('/');
         var docsPrefix = basePath == "/" ? "" : basePath; // so "{PathBase}{docsPrefix}/" never doubles the slash
@@ -95,7 +95,7 @@ public static class McpDocsEndpointRouteBuilderExtensions
 
         // Exports derived from the catalog, so they list exactly what this viewer's catalog.json does. Rendered
         // once per catalog variant, origin and PathBase; a repeat request is a lookup.
-        async Task Export(HttpContext ctx, string file, string contentType, Func<McpDocsExports.Source, string> render)
+        async Task Export(HttpContext ctx, string file, string contentType, Func<McpDocsExports.Source, string> render, string? attachment = null)
         {
             ThrowIfMisconfigured();
             var result = await GetCatalog(ctx).GetAsync(ctx);
@@ -106,8 +106,14 @@ public static class McpDocsEndpointRouteBuilderExtensions
             if (!exports.TryGetValue(key, out var export))
             {
                 var body = Encoding.UTF8.GetBytes(render(new McpDocsExports.Source(JsonNode.Parse(result.Json)!, result.ETag, origin, pathBase, basePath)));
-                export = new Asset(body, contentType, McpDocsCatalog.ETagOf(body), "");
+                export = new McpDocsAsset(body, contentType, McpDocsCatalog.ETagOf(body), "");
                 if (exports.Count < MaxCachedExports) exports.TryAdd(key, export);
+            }
+            if (attachment is not null)
+            {
+                var disposition = new ContentDispositionHeaderValue("attachment");
+                disposition.SetHttpFileName(attachment);
+                ctx.Response.Headers.ContentDisposition = disposition.ToString();
             }
             await Send(ctx, export.Bytes, contentType, export.ETag, "private, no-cache");
         }
@@ -123,6 +129,23 @@ public static class McpDocsEndpointRouteBuilderExtensions
             group.MapMethods("/server.json", GetHead, ctx => Export(ctx, "server.json", "application/json; charset=utf-8", s => McpDocsExports.ServerJson(s, registryName)))
                 .ExcludeFromDescription();
 
+        // The page as one self-contained file, as this viewer sees it: the download button's target.
+        if (docs.HtmlExport)
+            group.MapMethods("/docs.html", GetHead, ctx =>
+            {
+                var server = ctx.RequestServices.GetRequiredService<IOptions<McpServerOptions>>().Value;
+                var key = docs.ServerKey ?? McpDocsCatalog.Slug(server.ServerInfo?.Name ?? "mcp-server");
+                // ?theme=light|dark: the theme the viewer picked on the page, so the file opens the way they saw it.
+                var mode = (string?)ctx.Request.Query["theme"] switch
+                {
+                    "light" => McpDocsColorMode.Light,
+                    "dark" => McpDocsColorMode.Dark,
+                    _ => docs.DefaultColorMode,
+                };
+                return Export(ctx, "docs.html\n" + mode, "text/html; charset=utf-8", s => McpDocsStaticPage.FromRequest(s, docs, assets, mode),
+                    attachment: (key.Length > 0 ? key : "mcp-server") + "-docs.html");
+            }).ExcludeFromDescription();
+
         group.MapMethods("/_assets/{file}", GetHead, ctx =>
         {
             if (ctx.Request.RouteValues["file"] is string file && assets.Files.TryGetValue(file, out var a))
@@ -134,11 +157,12 @@ public static class McpDocsEndpointRouteBuilderExtensions
         return group;
     }
 
-    private static Task Page(HttpContext ctx, McpDocsOptions docs, Assets assets)
+    private static Task Page(HttpContext ctx, McpDocsOptions docs, McpDocsAssets assets)
     {
         var title = WebUtility.HtmlEncode(docs.Title ?? ctx.RequestServices.GetService<IOptions<McpServerOptions>>()?.Value.ServerInfo?.Title ?? "MCP server");
         var html = assets.PageTemplate
             .Replace("{{title}}", title)
+            .Replace("{{download}}", docs.HtmlExport ? " data-download=\"docs.html\"" : "")
             .Replace("{{mode}}", docs.DefaultColorMode switch { McpDocsColorMode.Light => " data-theme=\"light\"", McpDocsColorMode.Dark => " data-theme=\"dark\"", _ => "" })
             .Replace("{{theme}}", assets.Files.TryGetValue("theme.css", out var theme) ? $"<link rel=\"stylesheet\" href=\"_assets/theme.css?v={theme.Version}\">" : "")
             .Replace("{{print}}", assets.Files.TryGetValue("print.css", out var print) ? $"<link rel=\"stylesheet\" media=\"print\" href=\"_assets/print.css?v={print.Version}\">" : "")
@@ -196,40 +220,5 @@ public static class McpDocsEndpointRouteBuilderExtensions
             }
         }
         return false;
-    }
-
-    private sealed record Asset(byte[] Bytes, string ContentType, string ETag, string Version);
-
-    private sealed class Assets
-    {
-        public required string PageTemplate { get; init; }
-        public required Dictionary<string, Asset> Files { get; init; }
-
-        public static Assets Load(byte[] theme, bool print)
-        {
-            var files = new Dictionary<string, Asset>
-            {
-                ["app.css"] = Make(Read("app.css"), "text/css; charset=utf-8"),
-                ["app.js"] = Make(Read("app.js"), "text/javascript; charset=utf-8"),
-            };
-            if (print) files["print.css"] = Make(Read("print.css"), "text/css; charset=utf-8");
-            if (theme.Length > 0) files["theme.css"] = Make(theme, "text/css; charset=utf-8");
-            return new Assets { PageTemplate = Encoding.UTF8.GetString(Read("index.html")), Files = files };
-        }
-
-        private static Asset Make(byte[] bytes, string type)
-        {
-            var etag = McpDocsCatalog.ETagOf(bytes);
-            return new Asset(bytes, type, etag, etag.Trim('"')[..10]);
-        }
-
-        private static byte[] Read(string name)
-        {
-            using var s = typeof(Assets).Assembly.GetManifestResourceStream("McpDocs." + name)
-                ?? throw new InvalidOperationException($"Embedded asset '{name}' missing.");
-            using var ms = new MemoryStream();
-            s.CopyTo(ms);
-            return ms.ToArray();
-        }
     }
 }

@@ -15,7 +15,7 @@ internal static class McpDocsExports
 
     private static string Title(JsonNode c) => (string?)c["docs"]?["title"] ?? (string?)c["server"]?["name"] ?? "MCP server";
 
-    private static string Endpoint(Source s)
+    public static string Endpoint(Source s)
     {
         var e = (string?)s.Catalog["docs"]?["mcpEndpoint"] ?? "/mcp";
         return e.StartsWith('/') ? s.Origin + e : e;

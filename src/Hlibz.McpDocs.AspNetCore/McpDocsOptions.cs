@@ -36,6 +36,13 @@ public sealed class McpDocsOptions
     /// </summary>
     public bool InstallLinks { get; set; } = true;
 
+    /// <summary>
+    /// Offer the page as one self-contained HTML file: a download button beside the theme toggle, served from
+    /// <c>{pattern}/docs.html</c>. The file shows what the viewer who downloads it sees, with the MCP endpoint as an
+    /// absolute URL, and works without the app, like <see cref="McpDocsSnapshot.CreateHtmlAsync"/>. On by default.
+    /// </summary>
+    public bool HtmlExport { get; set; } = true;
+
     /// <summary>Placeholder value for <see cref="AuthHeader"/>.</summary>
     public string AuthPlaceholder { get; set; } = "Bearer <token>";
 

@@ -37,7 +37,7 @@ var app = builder.Build();
 
 app.MapMcp("/mcp");
 
-app.MapMcpDocs("/mcp-docs", o =>
+static void Docs(McpDocsOptions o)
 {
     o.Description = "Look up, create and cancel **Acme** orders from any MCP client. Read-only tools are safe to enable for everyone; " +
                     "destructive ones need the `orders:write` scope.";
@@ -45,7 +45,19 @@ app.MapMcpDocs("/mcp-docs", o =>
     o.AuthHint = "Ask in [#acme-integrations](https://example.com/slack) for a personal access token.";
     o.AddToolbarItem("Changelog", "https://example.com/changelog");
     // o.DefaultColorMode = McpDocsColorMode.Dark; o.DarkPreset = McpDocsDarkPreset.Nord; o.PrimaryColor = "#0a7f5a";
-});
+}
+
+// Static export instead of serving: dotnet run --project samples/Sample.McpServer -- --export-html site/index.html
+// The file is the same page with everything inline, for GitHub Pages or anywhere the app can't be reached.
+if (args is ["--export-html", var file])
+{
+    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(file))!);
+    await File.WriteAllTextAsync(file, await McpDocsSnapshot.CreateHtmlAsync(app.Services, Docs, mcpEndpoint: "https://example.com/mcp"));
+    Console.WriteLine($"Wrote {Path.GetFullPath(file)}");
+    return;
+}
+
+app.MapMcpDocs("/mcp-docs", Docs);
 // .RequireAuthorization();   // the returned route group covers page, catalog.json and assets
 
 app.MapGet("/", () => Results.Redirect("/mcp-docs/"));

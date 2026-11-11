@@ -1,11 +1,15 @@
-/* Hlibz.McpDocs — read-only docs page for MCP servers. No dependencies, no inline script. */
+/* Hlibz.McpDocs — read-only docs page for MCP servers. No dependencies. Served as a file, or inlined by a static
+   export under a CSP that allows it by hash. */
 (function () {
   'use strict';
 
   var root = document.documentElement;
   var THEME_KEY = 'mcp-docs-theme';
   function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } }
-  var saved = store(THEME_KEY);
+  // A static export opens in the theme it was saved with. Its storage is shared with every other file opened from
+  // disk, so a choice saved there would override that; the file neither reads nor writes one.
+  var STATIC = root.hasAttribute('data-static');
+  var saved = STATIC ? null : store(THEME_KEY);
   if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
 
   document.addEventListener('DOMContentLoaded', init);
@@ -152,6 +156,7 @@
 
   var ICON_SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
   var ICON_MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
+  var ICON_DOWNLOAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>';
   var ICON_MENU = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
   var ICON_LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 
@@ -402,10 +407,55 @@
   function authSearch(a) { return a ? ['restricted', authLabel(a)].concat(authParts(a)).join(' ') : ''; }
 
   // ---------------------------------------------------------------- connect snippets
+  // How a client reaches the server: Streamable HTTP at a URL, or a stdio command the client runs. A static
+  // export may have neither (it documents the primitives only); the served page always has a URL.
+  function connection(d) {
+    var s = d.stdio;
+    if (s && typeof s.command === 'string' && s.command) {
+      var args = Array.isArray(s.args) ? s.args.map(String) : [];
+      return { stdio: true, command: s.command, args: args, line: [s.command].concat(args).map(shellArg).join(' ') };
+    }
+    if (d.static && !d.mcpEndpoint) return null;
+    return { stdio: false, url: new URL(d.mcpEndpoint || '/mcp', location.href).href };
+  }
+  function shellArg(a) { return /^[\w@%+=:,.\/-]+$/.test(a) ? a : "'" + a.replace(/'/g, "'\\''") + "'"; }
+
+  function stdioSnippets(c, key, installLinks) {
+    function j(o) { return JSON.stringify(o, null, 2); }
+    var q = JSON.stringify, srv;
+    var claudeCode = 'claude mcp add ' + shellArg(key) + ' -- ' + c.line;
+    srv = {}; srv[key] = { command: c.command, args: c.args };
+    var desktop = j({ mcpServers: srv });
+    var cursor = desktop;
+    srv = {}; srv[key] = { type: 'stdio', command: c.command, args: c.args };
+    var vscode = j({ servers: srv });
+    var goose = 'extensions:\n  ' + key + ':\n    name: ' + q(key) + '\n    type: stdio\n    cmd: ' + q(c.command) +
+      '\n    args: ' + q(c.args) + '\n    enabled: true\n    timeout: 300';
+    var vscodeLink = null, cursorLink = null;
+    if (installLinks) {
+      vscodeLink = 'vscode:mcp/install?' + encodeURIComponent(JSON.stringify({ name: key, type: 'stdio', command: c.command, args: c.args }));
+      cursorLink = cursorInstall(key, { command: c.command, args: c.args });
+    }
+    return [
+      { id: 'claude-code', label: 'Claude Code', hint: 'Run in a terminal:', text: claudeCode, json: false },
+      { id: 'claude-desktop', label: 'Claude Desktop', hint: 'Add to <code>claude_desktop_config.json</code>:', text: desktop, json: true },
+      { id: 'vscode', label: 'VS Code', hint: 'Add to <code>.vscode/mcp.json</code>:', text: vscode, json: true, install: vscodeLink && { label: 'Add to VS Code', href: vscodeLink, note: 'Opens VS Code to review and install.' } },
+      { id: 'cursor', label: 'Cursor', hint: 'Add to <code>~/.cursor/mcp.json</code>:', text: cursor, json: true, install: cursorLink && { label: 'Add to Cursor', href: cursorLink, note: 'Opens Cursor to review and install.' } },
+      { id: 'goose', label: 'Goose', hint: 'Add to <code>~/.config/goose/config.yaml</code> (or run <code>goose configure</code> → Add Extension → Command-line Extension):', text: goose, json: false },
+      { id: 'other', label: 'Other', hint: 'Any MCP client that supports the stdio transport:', text: 'Command:    ' + c.line + '\nTransport:  stdio', json: false }
+    ];
+  }
+  function cursorInstall(key, cfg) {
+    return 'cursor://anysphere.cursor-deeplink/mcp/install?name=' + encodeURIComponent(key) +
+      '&config=' + encodeURIComponent(btoa(String.fromCharCode.apply(null, new TextEncoder().encode(JSON.stringify(cfg)))));
+  }
+
   function connectSnippets(cat) {
     var d = cat.docs || {};
-    var url = new URL(d.mcpEndpoint || '/mcp', location.href).href;
+    var conn = connection(d);
     var key = d.serverKey || 'mcp-server';
+    if (conn.stdio) return { tabs: stdioSnippets(conn, key, d.installLinks !== false) };
+    var url = conn.url;
     var h = d.authHeader, p = d.authPlaceholder || '<token>';
     var headers = h ? (function () { var o = {}; o[h] = p; return o; })() : undefined;
     function j(o) { return JSON.stringify(o, null, 2); }
@@ -433,8 +483,7 @@
       var vsCfg = { name: key, type: 'http', url: url }; if (headers) vsCfg.headers = headers;
       vscodeLink = 'vscode:mcp/install?' + encodeURIComponent(JSON.stringify(vsCfg));
       var cuCfg = { url: url }; if (headers) cuCfg.headers = headers;
-      cursorLink = 'cursor://anysphere.cursor-deeplink/mcp/install?name=' + encodeURIComponent(key) +
-        '&config=' + encodeURIComponent(btoa(String.fromCharCode.apply(null, new TextEncoder().encode(JSON.stringify(cuCfg)))));
+      cursorLink = cursorInstall(key, cuCfg);
     }
     var tokenNote = h ? ' It installs the <code>' + h.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</code> header with a placeholder value: replace it with your token.' : '';
 
@@ -449,6 +498,7 @@
   }
 
   function connectPanel(cat) {
+    if (!connection(cat.docs || {})) return null;
     var c = connectSnippets(cat);
     var current = c.tabs[0];
     var saved = store('mcp-docs-client');
@@ -779,18 +829,28 @@
     function paintThemeBtn() { themeBtn.innerHTML = isDark() ? ICON_SUN : ICON_MOON; themeBtn.setAttribute('aria-pressed', String(isDark())); }
     themeBtn.addEventListener('click', function () {
       var next = isDark() ? 'light' : 'dark';
-      root.setAttribute('data-theme', next); store(THEME_KEY, next); paintThemeBtn();
+      root.setAttribute('data-theme', next); if (!STATIC) store(THEME_KEY, next); paintThemeBtn();
     });
     paintThemeBtn();
+
+    // The served page offers itself as one file when HtmlExport is on; a static export has nothing to offer.
+    var download = app.getAttribute('data-download');
+    // The file opens in the theme the viewer picked here (or follows the system, like this page, if they haven't).
+    var downloadBtn = download ? el('a', { class: 'icon-btn', href: download, download: true, html: ICON_DOWNLOAD,
+      'aria-label': 'Download as HTML', title: 'Download this page as one HTML file that works offline',
+      onclick: function () {
+        var t = root.getAttribute('data-theme');
+        downloadBtn.setAttribute('href', download + (t === 'dark' || t === 'light' ? '?theme=' + t : ''));
+      } }) : null;
 
     var sidebar = el('aside', { class: 'sidebar', id: 'sidebar', 'aria-label': 'Navigation' },
       el('div', { class: 'side-head' },
         el('div', { class: 'side-title' }, el('strong', { text: title }), server.version ? el('span', { text: 'v' + server.version }) : null),
-        themeBtn),
+        el('div', { class: 'side-actions' }, downloadBtn, themeBtn)),
       toolbar(server, d),
       el('div', { class: 'search' }, search, el('kbd', { text: '/' })),
       nav,
-      el('div', { class: 'side-foot' }, el('a', { href: 'catalog.json', text: 'catalog.json' }), ' · read-only docs'));
+      el('div', { class: 'side-foot' }, d.static ? 'Read-only docs' : [el('a', { href: 'catalog.json', text: 'catalog.json' }), ' · read-only docs']));
 
     // --- content
     var counts = [
@@ -798,7 +858,8 @@
       prompts.length ? prompts.length + ' prompts' : null,
       resources.length + templates.length ? (resources.length + templates.length) + ' resources' : null
     ].filter(Boolean);
-    var endpointUrl = new URL(d.mcpEndpoint || '/mcp', location.href).href;
+    var conn = connection(d);
+    var endpointText = conn ? (conn.stdio ? conn.line : conn.url) : null;
     var overviewLeft = el('div', { class: 'l' },
       el('h1', null, iconEl(server.icons, 'lg'), title),
       el('div', { class: 'meta' },
@@ -814,8 +875,10 @@
       mdEl('div', '', d.description || server.description),
       d.description && cat.instructions ? el('div', { class: 'callout' }, el('span', { class: 'lbl', text: 'Instructions for the model' }), mdEl('div', '', cat.instructions)) : null,
       !d.description && !server.description ? mdEl('div', '', cat.instructions) : null,
-      el('div', { class: 'endpoint' }, el('span', { class: 'tag', text: 'HTTP' }), el('code', { text: endpointUrl }), copyButton(function () { return endpointUrl; })),
-      el('p', { class: 'none' }, 'Transport: Streamable HTTP.' + (d.authHeader ? ' Requires the ' : ''), d.authHeader ? el('code', { text: d.authHeader }) : null, d.authHeader ? ' header.' : ''),
+      conn ? el('div', { class: 'endpoint' }, el('span', { class: 'tag', text: conn.stdio ? 'STDIO' : 'HTTP' }), el('code', { text: endpointText }), copyButton(function () { return endpointText; })) : null,
+      !conn ? null
+        : conn.stdio ? el('p', { class: 'none' }, 'Transport: stdio. The client starts the server as a local process with this command.')
+        : el('p', { class: 'none' }, 'Transport: Streamable HTTP.' + (d.authHeader ? ' Requires the ' : ''), d.authHeader ? el('code', { text: d.authHeader }) : null, d.authHeader ? ' header.' : ''),
       d.authHint ? el('div', { class: 'callout' }, el('span', { class: 'lbl', text: 'Authentication' }), mdEl('div', '', d.authHint)) : null);
     var overview = el('section', { class: 'row', id: 'overview', 'data-nav': 'overview' }, overviewLeft, el('div', { class: 'r' }, connectPanel(cat)));
 
@@ -875,11 +938,20 @@
   function init() {
     var app = document.getElementById('app');
     function fail(text) { app.replaceChildren(el('div', { class: 'error', text: text })); }
+    function show(cat) {
+      try { render(app, cat); }
+      catch (e) { if (window.console) console.error(e); fail('Could not show the server catalog: ' + e.message); }
+    }
+    // A static export carries its catalog inline; the served page fetches it.
+    var inline = document.getElementById('mcp-catalog');
+    if (inline) {
+      var cat;
+      try { cat = JSON.parse(inline.textContent); } catch (e) { fail('Could not load the server catalog: ' + e.message); return; }
+      show(cat);
+      return;
+    }
     fetch(app.getAttribute('data-catalog'), { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
       .then(function (r) { if (!r.ok) throw new Error(r.status + ' ' + r.statusText); return r.json(); })
-      .then(function (cat) {
-        try { render(app, cat); }
-        catch (e) { if (window.console) console.error(e); fail('Could not show the server catalog: ' + e.message); }
-      }, function (e) { fail('Could not load the server catalog: ' + e.message); });
+      .then(show, function (e) { fail('Could not load the server catalog: ' + e.message); });
   }
 })();

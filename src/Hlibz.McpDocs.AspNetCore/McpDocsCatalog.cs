@@ -34,13 +34,13 @@ internal sealed class McpDocsCatalog
 
     private readonly McpServerOptions _server;
     private readonly McpDocsOptions _docs;
-    private readonly string _endpoint;
+    private readonly string? _endpoint;
     private readonly string _pathBase;
     private readonly Item[] _items;
     private readonly int[] _gated; // indexes into _items
     private readonly ConcurrentDictionary<string, Result> _results = new(StringComparer.Ordinal);
 
-    public McpDocsCatalog(McpServerOptions server, McpDocsOptions docs, string resolvedEndpoint, string pathBase = "")
+    public McpDocsCatalog(McpServerOptions server, McpDocsOptions docs, string? resolvedEndpoint, string pathBase = "")
     {
         _pathBase = pathBase;
         _server = server;
@@ -212,7 +212,7 @@ internal sealed class McpDocsCatalog
         if (value is not null) w.WriteString(name, value);
     }
 
-    private static string Slug(string s)
+    internal static string Slug(string s)
     {
         var chars = s.ToLowerInvariant().Select(c => char.IsAsciiLetterOrDigit(c) ? c : '-').ToArray();
         return new string(chars).Trim('-');

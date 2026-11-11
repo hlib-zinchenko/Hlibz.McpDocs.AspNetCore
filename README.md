@@ -24,6 +24,7 @@ app.MapMcpDocs("/mcp-docs");   // that's the whole zero-config path
   one-click "Add to VS Code" and "Add to Cursor" buttons.
 - **`[Authorize]` is honoured.** A viewer only sees the primitives their MCP client would see.
 - **Exports for agents:** `catalog.json`, `catalog.md`, `llms.txt`, and a `server.json` for the MCP Registry.
+- **A static page too:** the same page as one HTML file, for GitHub Pages, readers who can't reach the app, or a stdio server.
 - **Checks your descriptions.** Missing descriptions and annotations are flagged on the page and logged at startup.
 - **Strict by default:** no inline script or style, a CSP that an existing one of yours always wins over.
 - Dark and light themes, accent colour, print styles, keyboard navigation.
@@ -94,6 +95,7 @@ All optional. Set them in the `MapMcpDocs` callback.
 | `AuthPlaceholder` | `Bearer <token>` | Placeholder value for `AuthHeader`. |
 | `AuthHint` | none | How to get credentials (Markdown subset). |
 | `ToolGroup` | `McpDocsGrouping.ByAttribute` | Sidebar group per tool; also `ByNamePrefix`, `None`, or your own function. |
+| `HtmlExport` | `true` | A download button beside the theme toggle that saves the page as one HTML file (`{pattern}/docs.html`), as the viewer sees it. See [Static page](#static-page). |
 | `InstallLinks` | `true` | "Add to VS Code" / "Add to Cursor" buttons under the connect snippets. They open the editor's own install dialog; with `AuthHeader` set they carry the placeholder token. |
 | `RegistryName` | none | Reverse-DNS name (`io.github.acme/orders`); when set, `server.json` for the MCP Registry is served at `{pattern}/server.json` (one `streamable-http` remote, plus the auth header if configured). |
 | `ShowMeta` | `false` | Show each primitive's `_meta`; when off it is also left out of `catalog.json`. |
@@ -118,6 +120,45 @@ Next to `catalog.json`, the same per-viewer catalog is rendered as:
 
 All three sit in the route group, so `.RequireAuthorization()` covers them and `[Authorize]` filtering applies.
 No `.well-known` server card: the proposal is still a draft and its path and shape differ between drafts.
+
+## Static page
+
+The page can be saved as one HTML file: styles, script and catalog inline, nothing fetched, so it also works
+opened from disk. Publish it on GitHub Pages, send it to someone who can't reach the app, or document a stdio
+server, which has no page to map.
+
+**From the page.** The download button beside the theme toggle saves `{pattern}/docs.html`: what that viewer
+sees, with the MCP endpoint, toolbar links and favicon made absolute for the host it was downloaded from. It sits
+in the route group, so `.RequireAuthorization()` covers it. Set `HtmlExport = false` to remove the button and the
+route.
+
+**From code**, e.g. in CI, with `McpDocsSnapshot.CreateHtmlAsync`:
+
+```csharp
+var app = builder.Build();
+
+// dotnet run -- --export-html site/index.html
+if (args is ["--export-html", var file])
+{
+    var html = await McpDocsSnapshot.CreateHtmlAsync(app.Services, ConfigureDocs, mcpEndpoint: "https://api.example.com/mcp");
+    await File.WriteAllTextAsync(file, html);
+    return;
+}
+
+app.MapMcpDocs("/mcp-docs", ConfigureDocs);
+```
+
+- **How to connect.** A file has no host to resolve `/mcp` against, so `mcpEndpoint` (or `McpEndpoint` in the
+  options) must be an absolute `http(s)` URL. For a stdio server pass the command a client runs instead,
+  `stdioCommand: ["dnx", "Acme.Mcp", "--yes"]`, and the connect snippets start it. With neither, the page
+  documents the primitives and has no connect panel.
+- **Whose view.** The file shows what `viewer` may see (anonymous by default) to everyone who opens it.
+- **Stable.** The same server and options give the same bytes, so a checked-in copy changes only when they do.
+- **Still strict.** A `<meta>` CSP allows the inline script and styles by their hashes, and nothing else.
+- **Links.** Use absolute URLs for toolbar items; a favicon path into the app is dropped in favour of the server
+  icon. `catalog.md`, `llms.txt` and `server.json` aren't part of the file.
+
+The sample has the switch above: `dotnet run --project samples/Sample.McpServer -- --export-html site/index.html`.
 
 ## Authorization
 
