@@ -19,23 +19,41 @@ public static class McpDocsSnapshot
     /// <summary>
     /// The catalog as indented JSON, in a stable order, as <paramref name="viewer"/> would see it
     /// (anonymous when <see langword="null"/>; primitives gated with <c>[Authorize]</c> are left out unless the viewer passes).
+    /// <para>
+    /// By default only the contract: what clients get from the server (definitions, capabilities, instructions) and
+    /// what a viewer needs to call it (authorization). How the page presents it is left out (the <c>docs</c> block,
+    /// sidebar groups, description warnings), so a new title or toolbar link doesn't fail a contract test.
+    /// </para>
     /// </summary>
     /// <param name="services">The app's services, e.g. <c>app.Services</c> or <c>factory.Services</c>.</param>
     /// <param name="configure">The same configuration passed to <c>MapMcpDocs</c>; only options that change the catalog matter.</param>
     /// <param name="viewer">Who is looking, to snapshot a role's view.</param>
-    /// <param name="mcpEndpoint">What to record as the MCP endpoint (default <c>/mcp</c>); no routing is consulted.</param>
+    /// <param name="mcpEndpoint">What to record as the MCP endpoint (default <c>/mcp</c>) when <paramref name="includePresentation"/> is set; no routing is consulted.</param>
+    /// <param name="includePresentation">Also include the presentation: the whole catalog the page is built from.</param>
     public static async Task<string> CreateAsync(
         IServiceProvider services,
         Action<McpDocsOptions>? configure = null,
         ClaimsPrincipal? viewer = null,
-        string mcpEndpoint = "/mcp")
+        string mcpEndpoint = "/mcp",
+        bool includePresentation = false)
     {
         ArgumentNullException.ThrowIfNull(services);
         var docs = new McpDocsOptions { McpEndpoint = mcpEndpoint };
         configure?.Invoke(docs);
         docs.Validate();
 
-        var node = await CatalogAsync(services, docs, docs.McpEndpoint ?? mcpEndpoint, viewer);
+        var node = (await CatalogAsync(services, docs, docs.McpEndpoint ?? mcpEndpoint, viewer)).AsObject();
+        if (!includePresentation)
+        {
+            node.Remove("docs");
+            foreach (var section in new[] { "tools", "prompts", "resources", "resourceTemplates" })
+                if (node[section] is JsonArray entries)
+                    foreach (var entry in entries.OfType<JsonObject>())
+                    {
+                        entry.Remove("group");
+                        entry.Remove("issues");
+                    }
+        }
         return node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }).ReplaceLineEndings("\n") + "\n";
     }
 

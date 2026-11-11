@@ -67,7 +67,7 @@ internal static class McpDocsExports
         if (d["outputSchema"] is JsonObject output)
         {
             sb.Append("\nResult (`structuredContent`):\n\n");
-            if (output["properties"] is JsonObject { Count: > 0 }) Parameters(sb, output);
+            if (Follow(output, "#", output).Node?["properties"] is JsonObject { Count: > 0 }) Parameters(sb, output);
             else
             {
                 // Not an object (allowed since protocol 2026-07-28): a list or a bare value.
@@ -152,6 +152,8 @@ internal static class McpDocsExports
     /// </summary>
     private static void Parameters(StringBuilder sb, JsonNode? schema, JsonNode? root = null, string pointer = "#")
     {
+        root ??= schema;
+        if (schema is JsonObject { } top && top["allOf"] is JsonArray) schema = Merge(top, pointer, root!, 0);
         if (schema?["properties"] is not JsonObject { Count: > 0 })
         {
             sb.Append(schema is null ? "None.\n" : "None (" + TypeOf(schema, root ?? schema) + ").\n");
@@ -170,8 +172,9 @@ internal static class McpDocsExports
             var p = pointer + "/properties/" + name.Replace("~", "~0").Replace("/", "~1");
             var (s, sp) = Follow(raw, p, root);
             var label = prefix + name;
-            var recursive = Target(s, sp, root) is { } target && path.Contains(target);
-            sb.Append("| `").Append(label).Append("` | ").Append(Cell(TypeOf(raw, root) + (recursive ? " (recursive)" : ""))).Append(" | ")
+            var target = Target(s, sp, root);
+            var recursive = target is not null && path.Contains(target);
+            sb.Append("| `").Append(label).Append("` | ").Append(Cell(TypeOf(raw, root) + (recursive ? " (recursive: " + RecursionLabel(target!, root) + ")" : ""))).Append(" | ")
               .Append(required.Contains(name) ? "yes" : "no").Append(" | ")
               .Append(Cell((string?)raw?["description"] ?? (string?)s?["description"])).Append(" |\n");
             if (!recursive && depth < MaxNesting) Expand(sb, s, sp, root, label, path, depth + 1);
@@ -245,15 +248,80 @@ internal static class McpDocsExports
     private static bool IsNullType(JsonNode? n) =>
         n?["type"] is JsonValue v && v.TryGetValue<string>(out var t) && t == "null";
 
-    /// <summary>Follows local <c>$ref</c>s (any <c>#</c> pointer, as the SDK emits <c>#/properties/x</c>) to the schema and its pointer.</summary>
-    private static (JsonNode? Node, string Pointer) Follow(JsonNode? node, string pointer, JsonNode root)
+    /// <summary>
+    /// Follows local <c>$ref</c>s (any <c>#</c> pointer, as the SDK emits <c>#/properties/x</c>) to the schema and its
+    /// pointer, then merges <c>allOf</c>.
+    /// </summary>
+    private static (JsonNode? Node, string Pointer) Follow(JsonNode? node, string pointer, JsonNode root, int depth = 0)
     {
         for (var guard = 0; guard < 20 && (string?)node?["$ref"] is { } r && r.StartsWith('#'); guard++)
         {
             node = Resolve(node!, root);
             pointer = r;
         }
+        if (node is JsonObject o && o["allOf"] is JsonArray && depth < MaxNesting) node = Merge(o, pointer, root, depth);
         return (node, pointer);
+    }
+
+    /// <summary>
+    /// <c>allOf</c> as one schema: every part applies, so fields, required names and constraints add up; the
+    /// schema's own keys win. A copy: the catalog itself is left as the SDK wrote it.
+    /// </summary>
+    private static JsonObject Merge(JsonObject o, string pointer, JsonNode root, int depth)
+    {
+        var merged = new JsonObject();
+        var props = new JsonObject();
+        var required = new List<string>();
+        void Add(JsonObject part, bool own)
+        {
+            foreach (var (k, v) in part)
+            {
+                if (k == "allOf") continue;
+                if (k == "properties" && v is JsonObject ps)
+                    foreach (var (name, p) in ps) props[name] = p?.DeepClone();
+                else if (k == "required" && v is JsonArray rs)
+                    required.AddRange(rs.Select(x => (string?)x).OfType<string>().Where(x => !required.Contains(x)));
+                else if (own || !merged.ContainsKey(k)) merged[k] = v?.DeepClone();
+            }
+        }
+        var parts = (JsonArray)o["allOf"]!;
+        for (var i = 0; i < parts.Count; i++)
+            if (Follow(parts[i], pointer + "/allOf/" + i, root, depth + 1).Node is JsonObject part) Add(part, own: false);
+        Add(o, own: true);
+        if (props.Count > 0)
+        {
+            merged["properties"] = props;
+            if (!merged.ContainsKey("type")) merged["type"] = "object";
+        }
+        if (required.Count > 0) merged["required"] = new JsonArray(required.Select(x => (JsonNode?)x).ToArray());
+        return merged;
+    }
+
+    /// <summary>
+    /// What a recursive field repeats: a <c>$defs</c> name, the schema's title, else the field it first appeared
+    /// as (<c>#/properties/category</c> → "same as `category`"). The SDK emits field pointers, not type names.
+    /// </summary>
+    private static string RecursionLabel(string pointer, JsonNode root)
+    {
+        var parts = pointer.TrimStart('#').Split('/', StringSplitOptions.RemoveEmptyEntries)
+            .Select(p => p.Replace("~1", "/").Replace("~0", "~")).ToList();
+        if (parts.Count == 2 && parts[0] is "$defs" or "definitions") return "`" + parts[1] + "`";
+        if ((string?)Resolve(new JsonObject { ["$ref"] = pointer }, root)?["title"] is { Length: > 0 } title) return title;
+        while (parts.Count >= 2 && parts[^2] is "anyOf" or "oneOf") parts.RemoveRange(parts.Count - 2, 2); // nullable wrapper
+        var sb = new StringBuilder();
+        for (var i = 0; i < parts.Count; i++)
+        {
+            var next = i + 1 < parts.Count ? parts[i + 1] : null;
+            switch (parts[i])
+            {
+                case "properties" when next is not null: sb.Append(sb.Length > 0 ? "." : "").Append(next); i++; break;
+                case "items": sb.Append("[]"); break;
+                case "additionalProperties": sb.Append(".<key>"); break;
+                case "anyOf" or "oneOf" when int.TryParse(next, out var n): sb.Append(" (option ").Append(n + 1).Append(')'); i++; break;
+                case "$defs" or "definitions" when next is not null: sb.Clear().Append(next); i++; break;
+            }
+        }
+        return "same as " + (sb.Length > 0 ? "`" + sb + "`" : "the top level");
     }
 
     /// <summary>Follows one local <c>$ref</c> (<c>#</c>, <c>#/$defs/X</c>, <c>#/properties/x</c>, …) against the root schema.</summary>
@@ -278,6 +346,7 @@ internal static class McpDocsExports
             if (named || root is null || depth > 4 || Resolve(o, root) is not { } target) return r == "#" ? "object" : r[(r.LastIndexOf('/') + 1)..];
             return TypeOf(target, root, depth + 1);
         }
+        if (o["allOf"] is JsonArray && depth <= 4) return TypeOf(Merge(o, "#", root ?? o, depth), root ?? o, depth + 1);
         if (o["enum"] is JsonArray e) return "enum(" + string.Join(", ", e.Select(x => x?.ToJsonString())) + ")";
         foreach (var key in new[] { "anyOf", "oneOf" })
             if (o[key] is JsonArray u) return string.Join(" | ", u.Select(x => TypeOf(x, root, depth + 1)).Distinct());

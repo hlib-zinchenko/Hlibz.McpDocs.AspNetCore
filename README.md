@@ -213,12 +213,17 @@ parameter, a changed output schema or a dropped `[Authorize]` fails the build, t
 an OpenAPI diff. [`tests/SnapshotTests.cs`](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/blob/main/tests/SnapshotTests.cs) does this for an
 anonymous and an admin viewer; `UPDATE_SNAPSHOTS=1 dotnet test` accepts a change.
 
+The snapshot is the contract only: definitions, capabilities, instructions and authorization. How the page
+presents them (title, links, sidebar groups, description warnings) is left out, so changing those fails
+nothing. Pass `includePresentation: true` for the whole catalog the page is built from.
+
 ## Compatibility
 
 - Targets `net8.0`, which also runs in net9 and net10 apps. CI builds and tests on the .NET 8 runtime.
-- Built against `ModelContextProtocol.AspNetCore` 2.3.1. Authorization mirrors that version's
-  `AddAuthorizationFilters()`; if a newer SDK changes how it filters, update the package. A weekly CI job
-  runs the tests against the newest stable SDK to catch that early.
+- Built against `ModelContextProtocol.AspNetCore` 2.3.1 and accepts any 2.x. Authorization mirrors that
+  version's `AddAuthorizationFilters()`; a test compares what the page shows each viewer with what the
+  server lists them, and a weekly CI job runs it against the newest stable SDK. 3.0 and later are outside
+  the range until they've been checked.
 - `IsAotCompatible`: endpoints are `RequestDelegate`s, and the library builds with no trim warnings.
 - Connect snippets follow the clients' current documentation (VS Code and Cursor install links, Goose
   `config.yaml`). If one stops working after a client update, please open an issue.

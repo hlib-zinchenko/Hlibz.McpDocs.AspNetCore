@@ -35,6 +35,19 @@ public class SnapshotTests
     [Fact] public Task Admin_contract_is_unchanged() => Verify("admin", Admin());
 
     [Fact]
+    public async Task Presentation_is_left_out_unless_asked_for()
+    {
+        await using var app = await TestApp.StartAsync();
+        void Docs(McpDocsOptions o) { o.Title = "Renamed"; o.AddToolbarItem("Status", "https://status.example"); o.ToolGroup = _ => "Things"; }
+        Assert.Equal(await McpDocsSnapshot.CreateAsync(app.App.Services), await McpDocsSnapshot.CreateAsync(app.App.Services, Docs));
+
+        var full = await McpDocsSnapshot.CreateAsync(app.App.Services, Docs, includePresentation: true);
+        Assert.Contains("\"title\": \"Renamed\"", full);
+        Assert.Contains("\"group\": \"Things\"", full);
+        Assert.Contains("\"issues\"", full);
+    }
+
+    [Fact]
     public async Task Admin_sees_more_than_anonymous()
     {
         await using var app = await TestApp.StartAsync();

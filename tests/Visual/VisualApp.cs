@@ -14,17 +14,18 @@ internal sealed class VisualApp : IAsyncDisposable
     private WebApplication _app = null!;
     public string BaseUrl { get; private set; } = "";
 
-    public static async Task<VisualApp> StartAsync()
+    public static async Task<VisualApp> StartAsync(Action<IMcpServerBuilder>? server = null, Action<McpDocsOptions>? docs = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
-        builder.Services.AddMcpServer(o => o.ServerInfo = new() { Name = "visual-server", Title = "Visual Server", Version = "1.0.0" })
+        var mcp = builder.Services.AddMcpServer(o => o.ServerInfo = new() { Name = "visual-server", Title = "Visual Server", Version = "1.0.0" })
             .WithHttpTransport().WithTools<Tools>().WithPrompts<Prompts>().WithResources<Resources>();
+        server?.Invoke(mcp);
 
         var app = builder.Build();
         app.MapMcp("/mcp");
-        app.MapMcpDocs("/mcp-docs", o => o.AddToolbarItem("GitHub", "https://example.com"));
+        app.MapMcpDocs("/mcp-docs", o => { o.AddToolbarItem("GitHub", "https://example.com"); docs?.Invoke(o); });
         await app.StartAsync();
         return new VisualApp { _app = app, BaseUrl = app.Urls.First() };
     }

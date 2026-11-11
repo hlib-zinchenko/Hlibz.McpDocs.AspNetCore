@@ -1,4 +1,10 @@
 using System.Net;
+using System.Text.Json.Nodes;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Server;
 using Xunit;
 
 namespace Hlibz.McpDocs.AspNetCore.Tests;
@@ -24,5 +30,68 @@ public class AuthorizationTests
         Assert.DoesNotContain(await anon.ListToolsAsync(), t => t.Name == "delete_thing");
         await using var admin = await app.McpAsync("admin");
         Assert.Contains(await admin.ListToolsAsync(), t => t.Name == "delete_thing");
+    }
+
+    /// <summary>
+    /// The docs page decides visibility with its own copy of the SDK's authorization rules. This compares the two
+    /// for every kind of metadata and viewer, so a newer SDK that filters differently (the weekly job runs these
+    /// tests against the newest one) fails here instead of showing a viewer what their client wouldn't list.
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("user")]
+    [InlineData("admin")]
+    [InlineData("owner")]
+    [InlineData("editor")]
+    [InlineData("auditor")]
+    [InlineData("ops")]
+    [InlineData("ops,oncall")]
+    [InlineData("admin,editor,auditor,ops,oncall")]
+    public async Task The_page_lists_exactly_what_the_server_lists_for_each_viewer(string? roles)
+    {
+        await using var app = await TestApp.StartAsync(
+            server: s => s.WithTools<GatedTools>().WithPrompts<GatedPrompts>().WithResources<GatedResources>(),
+            authorization: o => o.AddPolicy("Editors", p => p.RequireRole("editor")));
+
+        var catalog = JsonNode.Parse(await app.Client(roles).GetStringAsync("/mcp-docs/catalog.json"))!;
+        string[] Page(string section) => [.. catalog[section]!.AsArray().Select(e => (string)e!["definition"]!["name"]!).Order()];
+
+        await using var mcp = await app.McpAsync(roles);
+        Assert.Equal([.. (await mcp.ListToolsAsync()).Select(t => t.Name).Order()], Page("tools"));
+        Assert.Equal([.. (await mcp.ListPromptsAsync()).Select(p => p.Name).Order()], Page("prompts"));
+        Assert.Equal([.. (await mcp.ListResourcesAsync()).Select(r => r.Name).Order()], Page("resources"));
+        Assert.Equal([.. (await mcp.ListResourceTemplatesAsync()).Select(r => r.Name).Order()], Page("resourceTemplates"));
+    }
+
+    /// <summary>A requirement without a policy name: <c>IAuthorizationRequirementData</c>, as with minimal APIs.</summary>
+    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
+    public sealed class AuditorsAttribute : Attribute, IAuthorizationRequirementData
+    {
+        public IEnumerable<IAuthorizationRequirement> GetRequirements() => [new RolesAuthorizationRequirement(["auditor"])];
+    }
+
+    [McpServerToolType, Authorize]
+    public sealed class GatedTools
+    {
+        [McpServerTool(Name = "signed_in")] public string SignedIn() => "";
+        [McpServerTool(Name = "open_anyway"), AllowAnonymous] public string OpenAnyway() => "";
+        [McpServerTool(Name = "admin_or_owner"), Authorize(Roles = "admin, owner")] public string AdminOrOwner() => "";
+        [McpServerTool(Name = "ops_and_oncall"), Authorize(Roles = "ops"), Authorize(Roles = "oncall")] public string OpsAndOncall() => "";
+        [McpServerTool(Name = "editors_policy"), Authorize(Policy = "Editors")] public string EditorsPolicy() => "";
+        [McpServerTool(Name = "auditors_requirement"), Auditors] public string AuditorsRequirement() => "";
+    }
+
+    [McpServerPromptType]
+    public sealed class GatedPrompts
+    {
+        [McpServerPrompt(Name = "admin_prompt"), Authorize(Roles = "admin")] public string AdminPrompt() => "";
+        [McpServerPrompt(Name = "editor_prompt"), Authorize(Policy = "Editors")] public string EditorPrompt() => "";
+    }
+
+    [McpServerResourceType]
+    public sealed class GatedResources
+    {
+        [McpServerResource(UriTemplate = "secret://admin", Name = "admin_resource"), Authorize(Roles = "admin")] public string Admin() => "";
+        [McpServerResource(UriTemplate = "secret://audit/{id}", Name = "audit_template"), Auditors] public string Audit(string id) => id;
     }
 }

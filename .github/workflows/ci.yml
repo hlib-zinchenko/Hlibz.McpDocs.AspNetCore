@@ -36,10 +36,17 @@ jobs:
       - name: Build
         run: dotnet build --no-restore --configuration Release
 
-      # tests/Visual (Playwright) is not run here: its screenshot baselines are per OS and only
-      # the macOS ones are checked in.
       - name: Test
         run: dotnet test tests/Hlibz.McpDocs.AspNetCore.Tests.csproj --no-build --configuration Release
+
+      # app.js in a real browser, checked through the DOM: the Markdown renderer (the page's XSS boundary) and
+      # schema rendering. The screenshot tests in the same project are left out: their baselines are per OS and
+      # only the macOS ones are checked in.
+      - name: Install Chromium
+        run: pwsh tests/Visual/bin/Release/net8.0/playwright.ps1 install --with-deps chromium
+
+      - name: Test the page in a browser
+        run: dotnet test tests/Visual/Hlibz.McpDocs.AspNetCore.VisualTests.csproj --no-build --configuration Release --filter Category=Behaviour
 
       - name: Pack
         run: dotnet pack src/Hlibz.McpDocs.AspNetCore --no-build --configuration Release --output ./artifacts

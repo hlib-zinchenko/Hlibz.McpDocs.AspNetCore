@@ -56,7 +56,7 @@ internal static partial class McpDocsStaticPage
         return Render(docs, assets, catalog, mode);
     }
 
-    /// <param name="mode">Colour mode for first-time viewers of the file; defaults to <see cref="McpDocsOptions.DefaultColorMode"/>.</param>
+    // mode: colour mode for first-time viewers of the file; defaults to McpDocsOptions.DefaultColorMode.
     public static string Render(McpDocsOptions docs, McpDocsAssets assets, JsonNode catalog, McpDocsColorMode? mode = null)
     {
         var title = (string?)catalog["docs"]?["title"] ?? "MCP server";

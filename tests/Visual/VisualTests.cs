@@ -10,6 +10,7 @@ namespace Hlibz.McpDocs.AspNetCore.VisualTests;
 /// is written and the test passes; <c>UPDATE_SNAPSHOTS=1</c> accepts changes. Needs Chromium:
 /// <c>pwsh tests/Visual/bin/Debug/net8.0/playwright.ps1 install chromium</c>.
 /// </summary>
+[Trait("Category", "Screenshot")]
 public class VisualTests : IAsyncLifetime
 {
     // Per-channel difference below this is anti-aliasing noise; a fraction of pixels above this is a real change.

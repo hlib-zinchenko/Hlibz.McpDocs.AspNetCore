@@ -45,7 +45,7 @@ public class StaticExportTests
         Assert.Null(d["stdio"]);
 
         // The same primitives the JSON snapshot lists, for the same (anonymous) viewer.
-        var snapshot = JsonNode.Parse(await McpDocsSnapshot.CreateAsync(app.App.Services))!;
+        var snapshot = JsonNode.Parse(await McpDocsSnapshot.CreateAsync(app.App.Services, includePresentation: true))!;
         Assert.True(JsonNode.DeepEquals(snapshot["tools"], cat["tools"]));
         Assert.True(JsonNode.DeepEquals(snapshot["resourceTemplates"], cat["resourceTemplates"]));
         Assert.DoesNotContain("delete_thing", html);

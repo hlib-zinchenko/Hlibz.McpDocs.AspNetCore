@@ -168,19 +168,79 @@
   }
 
   // ---------------------------------------------------------------- JSON Schema
-  function resolve(s, rootSchema) {
+  function lookup(ref, rootSchema) {
+    return ref.slice(1).split('/').filter(Boolean).reduce(function (o, p) {
+      return o == null ? o : o[p.replace(/~1/g, '/').replace(/~0/g, '~')];
+    }, rootSchema);
+  }
+  // Follows local $refs, then merges allOf. Returns [schema, pointer]: the pointer is where the schema lives in the
+  // root (a $ref moves it), which is what recursion is checked against. The SDK refers back by pointer
+  // (#/properties/x), so names alone would mix up two fields called x.
+  function follow(s, ptr, rootSchema, depth) {
     var guard = 0;
     while (s && typeof s === 'object' && typeof s.$ref === 'string' && s.$ref.charAt(0) === '#' && guard++ < 20) {
-      var target = s.$ref.slice(1).split('/').filter(Boolean).reduce(function (o, p) {
-        return o == null ? o : o[p.replace(/~1/g, '/').replace(/~0/g, '~')];
-      }, rootSchema);
+      var target = lookup(s.$ref, rootSchema);
       if (!target) break;
-      var rest = Object.assign({}, s); delete rest.$ref;
+      ptr = s.$ref;
+      // Siblings of $ref apply too. An empty one allows anything, so it adds nothing: the SDK writes
+      // { "$ref": …, "items": {} } for a list it already described, and that must not erase the items.
+      var rest = {};
+      for (var k in s) {
+        var v = s[k];
+        if (k === '$ref' || (v && typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length && target[k] !== undefined)) continue;
+        rest[k] = v;
+      }
       s = Object.assign({}, target, rest);
     }
-    return s || {};
+    s = s || {};
+    if (Array.isArray(s.allOf) && (depth || 0) < 8) s = mergeAllOf(s, ptr, rootSchema, depth || 0);
+    return [s, ptr];
   }
-  function refName(s) { if (!s || typeof s.$ref !== 'string') return null; return s.$ref === '#' ? 'Root' : s.$ref.split('/').pop(); }
+  function resolve(s, rootSchema) { return follow(s, '#', rootSchema)[0]; }
+  // allOf: every part applies, so its fields, required names and constraints add up. The schema's own keys win.
+  function mergeAllOf(s, ptr, rootSchema, depth) {
+    var out = {}, props = {}, required = [];
+    function add(part, own) {
+      Object.keys(part).forEach(function (k) {
+        if (k === 'properties') Object.assign(props, part.properties);
+        else if (k === 'required') (part.required || []).forEach(function (r) { if (required.indexOf(r) < 0) required.push(r); });
+        else if (k !== 'allOf' && (own || out[k] === undefined)) out[k] = part[k];
+      });
+    }
+    s.allOf.forEach(function (p, i) { add(follow(p, ptr + '/allOf/' + i, rootSchema, depth + 1)[0], false); });
+    add(s, true);
+    if (Object.keys(props).length) { out.properties = props; if (!out.type) out.type = 'object'; }
+    if (required.length) out.required = required;
+    return out;
+  }
+  // The name of a $defs type, else null: other refs point at a field (#/properties/x), which is no type name.
+  function defName(s) {
+    var m = s && typeof s.$ref === 'string' && /^#\/(\$defs|definitions)\/([^/]+)$/.exec(s.$ref);
+    return m ? m[2].replace(/~1/g, '/').replace(/~0/g, '~') : null;
+  }
+  // "#/properties/category/properties/children/items" → "category.children[]", for the reader.
+  function pointerPath(ptr) {
+    var parts = ptr.slice(1).split('/').filter(Boolean), out = '', i = 0;
+    while (parts.length && /^(anyOf|oneOf)$/.test(parts[parts.length - 2])) parts.length -= 2; // nullable wrapper
+    for (; i < parts.length; i++) {
+      var p = parts[i], next = parts[i + 1];
+      if (p === 'properties' && next != null) { out += (out ? '.' : '') + next.replace(/~1/g, '/').replace(/~0/g, '~'); i++; }
+      else if (p === 'items') out += '[]';
+      else if (p === 'additionalProperties') out += '.<key>';
+      else if ((p === 'anyOf' || p === 'oneOf') && next != null) { out += ' (option ' + (+next + 1) + ')'; i++; }
+      else if ((p === '$defs' || p === 'definitions') && next != null) { out = next; i++; }
+    }
+    return out;
+  }
+  // What a recursion chip says it repeats: the $defs name, the schema's title, else the field it first appeared as.
+  function recursionLabel(ptr, rootSchema) {
+    var m = /^#\/(\$defs|definitions)\/([^/]+)$/.exec(ptr);
+    if (m) return m[2];
+    var t = lookup(ptr, rootSchema);
+    if (t && typeof t.title === 'string' && t.title) return t.title;
+    var path = pointerPath(ptr);
+    return 'same as ' + (path || 'the top level');
+  }
   function types(s) { var t = s.type; return t == null ? [] : Array.isArray(t) ? t : [t]; }
   function nonNull(s) { return types(s).filter(function (t) { return t !== 'null'; }); }
   function isNullable(s) {
@@ -192,15 +252,51 @@
     v = v.filter(function (x) { return !(x && x.type === 'null'); });
     return v.length > 1 ? v : null;
   }
+  // The non-null options with their pointers, when there are two or more.
+  function variantsAt(s, ptr) {
+    var key = Array.isArray(s.oneOf) ? 'oneOf' : Array.isArray(s.anyOf) ? 'anyOf' : null;
+    if (!key) return null;
+    var v = [];
+    s[key].forEach(function (x, i) { if (!(x && x.type === 'null')) v.push([x, ptr + '/' + key + '/' + i]); });
+    return v.length > 1 ? v : null;
+  }
   function single(s, rootSchema) { // unwrap anyOf:[X, null]
     var v = s.oneOf || s.anyOf;
     if (Array.isArray(v)) { var nn = v.filter(function (x) { return !(x && x.type === 'null'); }); if (nn.length === 1) return Object.assign({}, s, { oneOf: undefined, anyOf: undefined }, nn[0]); }
     return s;
   }
+  // follow() after unwrapping anyOf:[X, null], keeping X's pointer.
+  function unwrap(raw, ptr, rootSchema) {
+    var f = follow(raw, ptr, rootSchema), s = f[0];
+    var key = Array.isArray(s.oneOf) ? 'oneOf' : Array.isArray(s.anyOf) ? 'anyOf' : null;
+    if (key) {
+      var nn = [];
+      s[key].forEach(function (x, i) { if (!(x && x.type === 'null')) nn.push(i); });
+      if (nn.length === 1) {
+        var g = follow(s[key][nn[0]], f[1] + '/' + key + '/' + nn[0], rootSchema);
+        return [Object.assign({}, s, { oneOf: undefined, anyOf: undefined }, g[0]), g[1]];
+      }
+    }
+    return f;
+  }
+  // The object whose fields show nested under a value (object, array of objects, map of objects, union), with its
+  // pointer: what recursion is checked against.
+  function target(raw, ptr, rootSchema) {
+    var x = unwrap(raw, ptr, rootSchema);
+    for (var guard = 0; guard < 10; guard++) {
+      var s = x[0];
+      if (s.properties || variants(s)) return x;
+      if (s.items && typeof s.items === 'object' && !Array.isArray(s.items)) x = unwrap(s.items, x[1] + '/items', rootSchema);
+      else if (s.additionalProperties && typeof s.additionalProperties === 'object') x = unwrap(s.additionalProperties, x[1] + '/additionalProperties', rootSchema);
+      else return null;
+    }
+    return null;
+  }
+  function escPtr(name) { return String(name).replace(/~/g, '~0').replace(/\//g, '~1'); }
 
   function typeLabel(raw, rootSchema, depth) {
     depth = depth || 0;
-    var name = refName(raw);
+    var name = defName(single(raw, rootSchema));
     var s = resolve(single(raw, rootSchema), rootSchema);
     if (depth > 4) return [el('span', { text: name || 'any' })];
     if (variants(s)) return [el('span', { text: 'one of' })];
@@ -241,25 +337,18 @@
     return chips.length ? el('div', { class: 'chips' }, chips) : null;
   }
 
-  // The object whose fields should be shown nested under a property (object, array of objects, map of objects).
-  function childObject(raw, rootSchema) {
-    var s = resolve(single(raw, rootSchema), rootSchema);
-    if (s.properties) return s;
-    if (nonNull(s)[0] === 'array' && s.items) { var it = resolve(single(s.items, rootSchema), rootSchema); if (it.properties || variants(it)) return it; }
-    if (s.additionalProperties && typeof s.additionalProperties === 'object') { var ap = resolve(single(s.additionalProperties, rootSchema), rootSchema); if (ap.properties) return ap; }
-    if (variants(s)) return s;
-    return null;
-  }
-
-  function propsView(objSchema, rootSchema, seen, depth) {
+  // path: pointers of the objects being expanded, outermost first. ptr: where objSchema lives in the root.
+  function propsView(objSchema, rootSchema, path, depth, ptr) {
     var list = el('div', { class: 'props' });
     var required = objSchema.required || [];
     var props = objSchema.properties || {};
-    Object.keys(props).forEach(function (name) { list.appendChild(propView(name, props[name], required.indexOf(name) >= 0, rootSchema, seen, depth)); });
+    Object.keys(props).forEach(function (name) {
+      list.appendChild(propView(name, props[name], required.indexOf(name) >= 0, rootSchema, path, depth, ptr + '/properties/' + escPtr(name)));
+    });
     return list;
   }
 
-  function propView(name, raw, required, rootSchema, seen, depth) {
+  function propView(name, raw, required, rootSchema, path, depth, ptr) {
     var s = resolve(single(raw, rootSchema), rootSchema);
     var head = el('div', { class: 'prop-head' },
       el('span', { class: 'prop-name', text: name }),
@@ -268,14 +357,13 @@
       isNullable(s) || isNullable(raw) ? el('span', { class: 'opt', text: 'nullable' }) : null);
     var row = el('div', { class: 'prop' }, head, mdEl('div', 'prop-desc', s.description || raw.description), constraintChips(s));
 
-    var child = childObject(raw, rootSchema);
-    if (child) {
-      var key = refName(raw) || refName(s.items || {}) || null;
-      if (key && seen.indexOf(key) >= 0) {
-        row.appendChild(el('div', { class: 'chips' }, el('span', { class: 'chip', text: '↻ recursive: ' + key })));
+    var t = target(raw, ptr, rootSchema);
+    if (t) {
+      var child = t[0];
+      if (path.indexOf(t[1]) >= 0) {
+        row.appendChild(el('div', { class: 'chips' }, el('span', { class: 'chip recursive', title: 'Not expanded again: it contains itself' }, '↻ recursive: ', recursionLabel(t[1], rootSchema))));
       } else if (depth < 8) {
-        var nextSeen = key ? seen.concat([key]) : seen;
-        var kids = el('div', { class: 'kids' }, schemaBody(child, rootSchema, nextSeen, depth + 1));
+        var kids = el('div', { class: 'kids' }, schemaBody(child, rootSchema, path.concat([t[1]]), depth + 1, t[1]));
         var n = Object.keys(child.properties || {}).length;
         var toggle = el('button', { class: 'toggle', type: 'button', onclick: function () { row.classList.toggle('collapsed'); } },
           n ? n + (n === 1 ? ' field' : ' fields') : 'variants');
@@ -287,41 +375,42 @@
     return row;
   }
 
-  function schemaBody(s, rootSchema, seen, depth) {
-    var v = variants(s);
+  function schemaBody(s, rootSchema, path, depth, ptr) {
+    var v = variantsAt(s, ptr);
     if (v) {
       return el('div', null, v.map(function (opt, i) {
-        var r = resolve(opt, rootSchema);
-        return [el('div', { class: 'variant-label', text: 'Option ' + (i + 1) + (refName(opt) ? ' · ' + refName(opt) : r.title ? ' · ' + r.title : '') }),
-          r.properties ? propsView(r, rootSchema, seen, depth) : el('div', { class: 'prop-type' }, typeLabel(opt, rootSchema))];
+        var f = follow(opt[0], opt[1], rootSchema), r = f[0], name = defName(opt[0]) || r.title;
+        return [el('div', { class: 'variant-label', text: 'Option ' + (i + 1) + (name ? ' · ' + name : '') }),
+          r.properties ? propsView(r, rootSchema, path.concat([f[1]]), depth, f[1]) : el('div', { class: 'prop-type' }, typeLabel(opt[0], rootSchema))];
       }));
     }
-    return propsView(s, rootSchema, seen, depth);
+    return propsView(s, rootSchema, path, depth, ptr);
   }
 
   function schemaView(schema) {
     if (!schema) return el('p', { class: 'none', text: 'No parameters.' });
-    var s = resolve(schema, schema);
+    var f = follow(schema, '#', schema), s = f[0], path = f[1] === '#' ? ['#'] : ['#', f[1]];
     if (!s.properties || !Object.keys(s.properties).length) {
-      if (variants(s)) return schemaBody(s, schema, [], 0);
+      if (variants(s)) return schemaBody(s, schema, path, 0, f[1]);
       return el('p', { class: 'none', text: 'No parameters.' });
     }
-    return propsView(s, schema, ['Root'], 0);
+    return propsView(s, schema, path, 0, f[1]);
   }
 
   // outputSchema need not be an object (protocol 2026-07-28+): a list or a bare value is shown as one typed row.
   function resultView(schema) {
-    var s = resolve(schema, schema);
-    if (s.properties && Object.keys(s.properties).length) return propsView(s, schema, ['Root'], 0);
-    if (variants(s) && nonNull(s)[0] !== 'array') return schemaBody(s, schema, [], 0);
-    return [el('div', { class: 'props result-value' }, propView('value', schema, false, schema, ['Root'], 0)),
+    var f = follow(schema, '#', schema), s = f[0], path = f[1] === '#' ? ['#'] : ['#', f[1]];
+    if (s.properties && Object.keys(s.properties).length) return propsView(s, schema, path, 0, f[1]);
+    if (variants(s) && nonNull(s)[0] !== 'array') return schemaBody(s, schema, path, 0, f[1]);
+    return [el('div', { class: 'props result-value' }, propView('value', schema, false, schema, [], 0, '#')),
       el('p', { class: 'none', html: 'Not an object: clients on protocol <code>2025-11-25</code> or older receive it wrapped as <code>{ "result": … }</code>.' })];
   }
 
   // Example value from a schema — used for the request/response samples.
   function example(raw, rootSchema, depth, seen) {
     depth = depth || 0; seen = seen || [];
-    var key = refName(raw);
+    var one = raw && typeof raw === 'object' ? single(raw, rootSchema) : raw;
+    var key = one && typeof one.$ref === 'string' ? one.$ref : null; // by pointer: names repeat across fields
     if (key && seen.indexOf(key) >= 0) return undefined;
     if (key) seen = seen.concat([key]);
     var s = resolve(single(raw, rootSchema), rootSchema);
@@ -589,10 +678,10 @@
       t.outputSchema ? [el('h4', null, 'Result', el('small', { text: 'structuredContent' })), resultView(t.outputSchema)] : null,
       metaBlock(t, SHOW_META));
 
-    var args = example(t.inputSchema || {}, t.inputSchema || {}, 0, ['Root']);
+    var args = example(t.inputSchema || {}, t.inputSchema || {}, 0, ['#']);
     var right = el('div', { class: 'r' }, panelBlock('Request', rpc('tools/call', { name: t.name, arguments: args || {} })));
     if (t.outputSchema) {
-      var out = example(t.outputSchema, t.outputSchema, 0, ['Root']);
+      var out = example(t.outputSchema, t.outputSchema, 0, ['#']);
       append(right, panelBlock('Response', { jsonrpc: '2.0', id: 1, result: { content: [{ type: 'text', text: JSON.stringify(out) }], structuredContent: out } }));
     } else {
       append(right, el('p', { class: 'panel-note', html: 'Returns <code>content</code> blocks (usually text). No output schema declared.' }));

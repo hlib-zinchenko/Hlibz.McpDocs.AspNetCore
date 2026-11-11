@@ -25,13 +25,14 @@ internal sealed class TestApp : IAsyncDisposable
         bool requireAuth = false,
         Action<IApplicationBuilder>? beforeDocs = null,
         string docsPattern = "/mcp-docs",
-        Action<IMcpServerBuilder>? server = null)
+        Action<IMcpServerBuilder>? server = null,
+        Action<AuthorizationOptions>? authorization = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Logging.ClearProviders();
         builder.Services.AddAuthentication("Test").AddScheme<AuthenticationSchemeOptions, TestAuthHandler>("Test", null);
-        builder.Services.AddAuthorization();
+        builder.Services.AddAuthorization(o => authorization?.Invoke(o));
         var mcp = builder.Services.AddMcpServer(o =>
             {
                 o.ServerInfo = new() { Name = "test-server", Title = "Test Server", Version = "1.0.0" };

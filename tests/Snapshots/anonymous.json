@@ -9,14 +9,6 @@
     "completions": false,
     "subscribe": false
   },
-  "docs": {
-    "showMeta": false,
-    "installLinks": true,
-    "title": "Test Server",
-    "mcpEndpoint": "/mcp",
-    "serverKey": "test-server",
-    "links": []
-  },
   "tools": [
     {
       "definition": {
@@ -82,10 +74,7 @@
         "annotations": {
           "readOnlyHint": true
         }
-      },
-      "issues": [
-        "No description."
-      ]
+      }
     },
     {
       "definition": {
@@ -102,12 +91,7 @@
             "id"
           ]
         }
-      },
-      "issues": [
-        "No description.",
-        "No annotations (readOnly / destructive / idempotent / openWorld hints).",
-        "Parameters without a description: id."
-      ]
+      }
     }
   ],
   "prompts": [

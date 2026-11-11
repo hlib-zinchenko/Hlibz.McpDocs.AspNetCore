@@ -65,17 +65,54 @@ public class ExportTests
 
         Assert.Contains("| object | yes | The tree |", Row("category"));
         Assert.Contains("| string | yes | Category id |", Row("category.id"));
-        Assert.Contains("array of object (recursive)", Row("category.children"));
+        Assert.Contains("array of object (recursive: same as `category`)", Row("category.children"));
         Assert.DoesNotContain(lines, l => l.StartsWith("| `category.children[]"));
         // The SDK inlines the nullable parent once and refers back to it after that.
         Assert.Contains("Category id", Row("category.parent.id"));
-        Assert.Contains("(recursive)", Row("category.parent.parent"));
+        Assert.Contains("(recursive: same as `category.parent`)", Row("category.parent.parent"));
         Assert.DoesNotContain(lines, l => l.StartsWith("| `category.parent.parent."));
 
         Assert.Contains("| string | yes | Product SKU |", Row("order.lines[].sku"));
         Assert.Contains("integer", Row("order.lines[].quantity"));
         Assert.Contains("Product SKU", Row("order.byWarehouse.<key>.sku"));
         Assert.Contains("City name", Row("order.shipTo.city"));
+    }
+
+    /// <summary>A tool whose input schema is hand-written: allOf as code generators and other SDKs emit it.</summary>
+    internal static McpServerTool AllOfTool()
+    {
+        var tool = McpServerTool.Create((string sku) => sku, new() { Name = "restock", Description = "Restocks a product." });
+        tool.ProtocolTool.InputSchema = System.Text.Json.JsonDocument.Parse("""
+            {
+              "type": "object",
+              "properties": { "item": { "$ref": "#/$defs/Item" } },
+              "required": ["item"],
+              "$defs": {
+                "Base": { "type": "object", "properties": { "sku": { "type": "string", "description": "Product SKU" } }, "required": ["sku"] },
+                "Item": {
+                  "allOf": [
+                    { "$ref": "#/$defs/Base" },
+                    { "properties": { "quantity": { "type": "integer", "description": "How many" }, "next": { "$ref": "#/$defs/Item" } } }
+                  ]
+                }
+              }
+            }
+            """).RootElement.Clone();
+        return tool;
+    }
+
+    [Fact]
+    public async Task Markdown_merges_allOf_and_names_a_recursive_type()
+    {
+        await using var app = await TestApp.StartAsync(server: s => s.WithTools([AllOfTool()]));
+        var md = await app.Client().GetStringAsync("/mcp-docs/catalog.md");
+        var lines = md.Split('\n');
+        string Row(string name) => Assert.Single(lines, l => l.StartsWith("| `" + name + "` |"));
+
+        Assert.Contains("| string | yes | Product SKU |", Row("item.sku"));
+        Assert.Contains("| integer | no | How many |", Row("item.quantity"));
+        Assert.Contains("(recursive: `Item`)", Row("item.next"));
+        Assert.DoesNotContain(lines, l => l.StartsWith("| `item.next."));
     }
 
     [Fact]
