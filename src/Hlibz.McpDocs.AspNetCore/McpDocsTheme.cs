@@ -39,22 +39,23 @@ internal static partial class McpDocsTheme
     {
         var sb = new StringBuilder();
 
-        // The code panel is dark in both modes, so its accent is a dark-mode colour: the dark one when given,
-        // else the light one mixed toward white (a brand colour picked for white pages is too dark on the panel).
-        var panelAccent = o.DarkModePrimaryColor is { } given ? $"--panel-accent:{given};"
-            : o.PrimaryColor is { } brand ? $"--panel-accent:color-mix(in oklab,{brand} 55%,white);"
-            : "";
+        // The dark-mode accent: the one given, else the light one mixed toward white. A brand colour picked for
+        // white pages is usually too dark on a dark one (#4450c8 is 2.8:1 there; mixed, 7.4:1).
+        var darkColor = o.DarkModePrimaryColor
+            ?? (o.PrimaryColor is { } brand ? $"color-mix(in oklab,{brand} 55%,white)" : null);
 
-        if (o.PrimaryColor is not null || panelAccent.Length > 0)
+        // The code panel is dark in both modes, so its accent is the dark-mode one; app.css already points
+        // --panel-accent at --accent in dark mode.
+        if (o.PrimaryColor is not null || darkColor is not null)
         {
             sb.Append(":root{");
             if (o.PrimaryColor is { } light) sb.Append(Accent(light, 9));
-            sb.Append(panelAccent).Append("}\n");
+            if (darkColor is not null) sb.Append("--panel-accent:").Append(darkColor).Append(';');
+            sb.Append("}\n");
         }
 
         var dark = new StringBuilder(Preset(o.DarkPreset));
-        var darkColor = o.DarkModePrimaryColor ?? o.PrimaryColor;
-        if (darkColor is not null) dark.Append(Accent(darkColor, 12)).Append(panelAccent);
+        if (darkColor is not null) dark.Append(Accent(darkColor, 12));
         else if (o.DarkPreset != McpDocsDarkPreset.Default) dark.Append("--accent-soft:color-mix(in srgb,var(--accent) 12%,transparent);");
         if (dark.Length > 0)
         {

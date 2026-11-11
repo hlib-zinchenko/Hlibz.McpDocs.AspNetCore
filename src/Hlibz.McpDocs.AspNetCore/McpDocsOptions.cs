@@ -77,7 +77,10 @@ public sealed class McpDocsOptions
     /// </summary>
     public string? PrimaryColor { get; set; }
 
-    /// <summary>Accent colour in dark mode. Defaults to <see cref="PrimaryColor"/>, else the dark preset's own.</summary>
+    /// <summary>
+    /// Accent colour in dark mode, and on the code panel (dark in both modes). Defaults to <see cref="PrimaryColor"/>
+    /// mixed toward white so it reads on dark backgrounds, else the dark preset's own. Set it for a near-black brand colour.
+    /// </summary>
     public string? DarkModePrimaryColor { get; set; }
 
     /// <summary>Palette used in dark mode.</summary>

@@ -73,12 +73,22 @@ public class PageTests
     }
 
     [Fact]
-    public void Panel_accent_is_the_dark_mode_colour_when_one_is_given()
+    public void Dark_accent_and_panel_accent_use_the_dark_mode_colour_when_one_is_given()
     {
         var css = McpDocsTheme.Build(new McpDocsOptions { PrimaryColor = "#0a7f5a", DarkModePrimaryColor = "#5fd3a6" });
-        Assert.Contains(":root{--accent:#0a7f5a;", css);
-        Assert.Equal(3, System.Text.RegularExpressions.Regex.Matches(css, "--panel-accent:#5fd3a6;").Count); // light, system dark, toggled dark
+        Assert.StartsWith(":root{--accent:#0a7f5a;", css);
+        Assert.Contains("--panel-accent:#5fd3a6;}", css); // light mode; dark mode's is var(--accent) in app.css
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(css, "--accent:#5fd3a6;").Count); // system dark, toggled dark
         Assert.Equal("", McpDocsTheme.Build(new McpDocsOptions())); // defaults live in app.css
+    }
+
+    [Fact]
+    public void Dark_accent_is_the_brand_colour_lightened_when_no_dark_one_is_given()
+    {
+        var css = McpDocsTheme.Build(new McpDocsOptions { PrimaryColor = "#4450c8" });
+        const string mixed = "color-mix(in oklab,#4450c8 55%,white)";
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(css, System.Text.RegularExpressions.Regex.Escape("--accent:" + mixed + ";")).Count);
+        Assert.DoesNotContain("--accent:#4450c8;--accent-soft:color-mix(in srgb,#4450c8 12%", css); // the raw colour is light mode only
     }
 
     [Fact]

@@ -234,6 +234,7 @@ public class StaticExportTests
     [Theory]
     [InlineData("?theme=dark", " data-theme=\"dark\"")]
     [InlineData("?theme=light", " data-theme=\"light\"")]
+    [InlineData("?theme=system", "")]
     [InlineData("", "")]
     [InlineData("?theme=bogus", "")]
     public async Task Download_opens_in_the_theme_the_viewer_picked(string query, string attribute)
@@ -249,5 +250,7 @@ public class StaticExportTests
         await using var app = await TestApp.StartAsync(o => o.DefaultColorMode = McpDocsColorMode.Dark);
         Assert.Contains("<html lang=\"en\" data-static data-theme=\"dark\">", await app.Client().GetStringAsync("/mcp-docs/docs.html"));
         Assert.Contains("<html lang=\"en\" data-static data-theme=\"light\">", await app.Client().GetStringAsync("/mcp-docs/docs.html?theme=light"));
+        // A viewer who switched back to following the system gets a file that follows it too.
+        Assert.Contains("<html lang=\"en\" data-static>", await app.Client().GetStringAsync("/mcp-docs/docs.html?theme=system"));
     }
 }

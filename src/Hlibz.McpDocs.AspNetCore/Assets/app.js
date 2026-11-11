@@ -11,6 +11,7 @@
   var STATIC = root.hasAttribute('data-static');
   var saved = STATIC ? null : store(THEME_KEY);
   if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+  else if (saved === 'system') root.removeAttribute('data-theme'); // also overrides a light or dark DefaultColorMode
 
   document.addEventListener('DOMContentLoaded', init);
 
@@ -156,6 +157,7 @@
 
   var ICON_SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
   var ICON_MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
+  var ICON_SYSTEM = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>';
   var ICON_DOWNLOAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>';
   var ICON_MENU = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
   var ICON_LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
@@ -827,22 +829,39 @@
       if (e.key === '/' && document.activeElement !== search && !/input|textarea/i.test(document.activeElement.tagName)) { e.preventDefault(); search.focus(); }
     });
 
-    var themeBtn = el('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Toggle dark mode', title: 'Toggle dark mode' });
-    function paintThemeBtn() { themeBtn.innerHTML = isDark() ? ICON_SUN : ICON_MOON; themeBtn.setAttribute('aria-pressed', String(isDark())); }
+    // Three modes, the icon showing the current one: follow the system (monitor), light (sun), dark (moon). The first
+    // click always changes the look (to the opposite of the system's); the third goes back to following the system.
+    var osDark = window.matchMedia('(prefers-color-scheme: dark)');
+    var themeBtn = el('button', { class: 'icon-btn', type: 'button' });
+    function themeMode() { var t = root.getAttribute('data-theme'); return t === 'dark' || t === 'light' ? t : 'system'; }
+    function nextMode(m) {
+      var os = osDark.matches ? 'dark' : 'light', other = os === 'dark' ? 'light' : 'dark';
+      return m === 'system' ? other : m === other ? os : 'system';
+    }
+    function modeName(m) { return m === 'system' ? 'follow system' : m; }
+    function paintThemeBtn() {
+      var m = themeMode();
+      themeBtn.innerHTML = m === 'system' ? ICON_SYSTEM : m === 'dark' ? ICON_MOON : ICON_SUN;
+      var label = 'Theme: ' + modeName(m) + (m === 'system' ? ' (' + (isDark() ? 'dark' : 'light') + ')' : '') + '. Switch to ' + modeName(nextMode(m));
+      themeBtn.setAttribute('aria-label', label);
+      themeBtn.title = label;
+    }
     themeBtn.addEventListener('click', function () {
-      var next = isDark() ? 'light' : 'dark';
-      root.setAttribute('data-theme', next); if (!STATIC) store(THEME_KEY, next); paintThemeBtn();
+      var next = nextMode(themeMode());
+      if (next === 'system') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', next);
+      if (!STATIC) store(THEME_KEY, next);
+      paintThemeBtn();
     });
+    if (osDark.addEventListener) osDark.addEventListener('change', paintThemeBtn); else if (osDark.addListener) osDark.addListener(paintThemeBtn);
     paintThemeBtn();
 
     // The served page offers itself as one file when HtmlExport is on; a static export has nothing to offer.
     var download = app.getAttribute('data-download');
-    // The file opens in the theme the viewer picked here (or follows the system, like this page, if they haven't).
+    // The file opens in the viewer's mode here: light, dark, or following the system.
     var downloadBtn = download ? el('a', { class: 'icon-btn', href: download, download: true, html: ICON_DOWNLOAD,
       'aria-label': 'Download as HTML', title: 'Download this page as one HTML file that works offline',
       onclick: function () {
-        var t = root.getAttribute('data-theme');
-        downloadBtn.setAttribute('href', download + (t === 'dark' || t === 'light' ? '?theme=' + t : ''));
+        downloadBtn.setAttribute('href', download + '?theme=' + themeMode());
       } }) : null;
 
     var sidebar = el('aside', { class: 'sidebar', id: 'sidebar', 'aria-label': 'Navigation' },

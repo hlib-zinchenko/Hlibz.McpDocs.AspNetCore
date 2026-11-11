@@ -135,11 +135,12 @@ public static class McpDocsEndpointRouteBuilderExtensions
             {
                 var server = ctx.RequestServices.GetRequiredService<IOptions<McpServerOptions>>().Value;
                 var key = docs.ServerKey ?? McpDocsCatalog.Slug(server.ServerInfo?.Name ?? "mcp-server");
-                // ?theme=light|dark: the theme the viewer picked on the page, so the file opens the way they saw it.
+                // ?theme=light|dark|system: the viewer's mode on the page, so the file opens the way they saw it.
                 var mode = (string?)ctx.Request.Query["theme"] switch
                 {
                     "light" => McpDocsColorMode.Light,
                     "dark" => McpDocsColorMode.Dark,
+                    "system" => McpDocsColorMode.System,
                     _ => docs.DefaultColorMode,
                 };
                 return Export(ctx, "docs.html\n" + mode, "text/html; charset=utf-8", s => McpDocsStaticPage.FromRequest(s, docs, assets, mode),

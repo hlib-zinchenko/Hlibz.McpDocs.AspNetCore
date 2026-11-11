@@ -100,9 +100,9 @@ All optional. Set them in the `MapMcpDocs` callback.
 | `RegistryName` | none | Reverse-DNS name (`io.github.acme/orders`); when set, `server.json` for the MCP Registry is served at `{pattern}/server.json` (one `streamable-http` remote, plus the auth header if configured). |
 | `ShowMeta` | `false` | Show each primitive's `_meta`; when off it is also left out of `catalog.json`. |
 | `CheckDescriptions` | `true` | Flag missing descriptions and annotations on the page and as startup warnings. |
-| `DefaultColorMode` | `System` | Colour mode for first-time viewers (`System`, `Light`, `Dark`). |
+| `DefaultColorMode` | `System` | Colour mode for first-time viewers (`System`, `Light`, `Dark`). The toggle then cycles follow system → the opposite look → the system's look, and remembers the viewer's pick. |
 | `PrimaryColor` | built-in | Accent colour: hex, `rgb()`, `hsl()` or a name. Validated at startup. |
-| `DarkModePrimaryColor` | `PrimaryColor` | Accent colour in dark mode. |
+| `DarkModePrimaryColor` | `PrimaryColor`, lightened | Accent colour in dark mode and on the code panel. Set it if your brand colour is near-black. |
 | `DarkPreset` | `Default` | `Midnight`, `Nord` or `GitHubDark`. |
 | `AdditionalCss` | none | Appended after the built-in CSS, served as `_assets/theme.css`. |
 | `Favicon` | server icon | `https:` URL, `data:image/` URI or path (`~/` = `PathBase`). |
