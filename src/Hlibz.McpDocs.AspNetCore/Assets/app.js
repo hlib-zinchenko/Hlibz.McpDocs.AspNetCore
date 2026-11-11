@@ -371,6 +371,8 @@
     b.push(a.openWorldHint === false ? { cls: 'plain', text: 'Closed world' } : { cls: 'info', text: 'Open world' });
     return { level: ro ? 'ok' : a.destructiveHint === false ? 'warn' : 'danger', badges: b };
   }
+  // The sidebar dot's name; its shape differs too (circle, ring, diamond), so colour isn't the only signal.
+  var DOT_LABELS = { ok: 'Read-only', warn: 'Modifies data', danger: 'Destructive', '': 'No annotations' };
   var RISK_TITLES = {
     'Read-only': 'Does not modify its environment (readOnlyHint)',
     'Modifies data': 'May change state, but not destructively (destructiveHint: false)',
@@ -771,7 +773,7 @@
     var navItems = [];
     function navItem(id, name, kind, dot, searchText, auth, icons) {
       var a = el('a', { class: 'nav-item', href: hrefOf(id), 'data-target': id, 'data-search': (name + ' ' + (searchText || '') + ' ' + authSearch(auth)).toLowerCase() },
-        dot !== null ? el('span', { class: 'dot ' + (dot || '') }) : null,
+        dot !== null ? el('span', { class: 'dot ' + (dot || ''), role: 'img', 'aria-label': DOT_LABELS[dot || ''], title: DOT_LABELS[dot || ''] }) : null,
         iconEl(icons),
         el('span', { class: 'nm', text: name, title: name }),
         auth ? el('span', { class: 'lock', title: 'Restricted: ' + authLabel(auth), html: ICON_LOCK }) : null,

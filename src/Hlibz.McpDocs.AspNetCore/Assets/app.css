@@ -15,6 +15,7 @@
   --panel-text: #d9dbe1;
   --panel-muted: #8f94a0;
   --panel-border: #363944;
+  --panel-accent: #8e97ff; /* the accent on the dark panel: the page accent is too dark there */
   --ok: #137033;      --ok-bg: rgba(23, 128, 61, .1);
   --danger: #c22a2a;  --danger-bg: rgba(194, 42, 42, .09);
   --info: #2a62c2;    --info-bg: rgba(42, 98, 194, .09);
@@ -30,7 +31,7 @@
   :root:not([data-theme="light"]) {
     --bg: #131417; --sidebar: #18191d; --surface: #1d1f24; --text: #e7e8eb; --muted: #9a9ca6; --faint: #8b8e99;
     --border: #2a2c33; --accent: #8e97ff; --accent-soft: rgba(142, 151, 255, .12);
-    --panel: #0e0f12; --panel-2: #17191e; --panel-border: #262830;
+    --panel: #1b1d22; --panel-2: #23262c; --panel-border: #30333b; --panel-accent: var(--accent);
     --ok: #4fc97a; --ok-bg: rgba(79, 201, 122, .12); --danger: #ff7a7a; --danger-bg: rgba(255, 122, 122, .12);
     --info: #7fb0ff; --info-bg: rgba(127, 176, 255, .12); --warn: #f0b85a; --warn-bg: rgba(240, 184, 90, .13);
     color-scheme: dark;
@@ -39,7 +40,7 @@
 :root[data-theme="dark"] {
   --bg: #131417; --sidebar: #18191d; --surface: #1d1f24; --text: #e7e8eb; --muted: #9a9ca6; --faint: #8b8e99;
   --border: #2a2c33; --accent: #8e97ff; --accent-soft: rgba(142, 151, 255, .12);
-  --panel: #0e0f12; --panel-2: #17191e; --panel-border: #262830;
+  --panel: #1b1d22; --panel-2: #23262c; --panel-border: #30333b; --panel-accent: var(--accent);
   --ok: #4fc97a; --ok-bg: rgba(79, 201, 122, .12); --danger: #ff7a7a; --danger-bg: rgba(255, 122, 122, .12);
   --info: #7fb0ff; --info-bg: rgba(127, 176, 255, .12); --warn: #f0b85a; --warn-bg: rgba(240, 184, 90, .13);
   color-scheme: dark;
@@ -100,7 +101,10 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .mcp-icon { flex: none; width: 16px; height: 16px; object-fit: contain; border-radius: 3px; }
 .mcp-icon.lg { width: 32px; height: 32px; margin-right: 12px; vertical-align: -6px; border-radius: 6px; }
 .dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
-.dot.ok { background: var(--ok); } .dot.danger { background: var(--danger); } .dot.warn { background: var(--warn); }
+/* Shape as well as colour: read-only a dot, modifies a ring, destructive a diamond. */
+.dot.ok { background: var(--ok); }
+.dot.warn { background: none; border: 2px solid var(--warn); }
+.dot.danger { width: 7px; height: 7px; border-radius: 1px; background: var(--danger); transform: rotate(45deg) scale(.95); }
 .nav-empty { padding: 10px; font-size: 13px; color: var(--muted); }
 .side-foot { padding: 10px 18px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--faint); }
 .side-foot a { color: var(--muted); }
@@ -108,7 +112,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* ---------- rows: left prose / right dark panel (ReDoc-style) ---------- */
 .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 42%); border-bottom: 1px solid var(--border); }
 .row > .l { padding: 40px 44px; min-width: 0; }
-.row > .r { padding: 40px 32px; background: var(--panel); color: var(--panel-text); min-width: 0; }
+.row > .r { padding: 40px 32px; background: var(--panel); color: var(--panel-text); min-width: 0; color-scheme: dark; } /* dark scrollbars on the dark panel in light mode too */
+.row > .r a:not(.btn) { color: var(--panel-accent); }
 .row.heading > .l { padding-top: 32px; padding-bottom: 0; }
 .row.heading + .row.heading > .l { padding-top: 18px; }
 .row.heading > .r { padding-top: 0; padding-bottom: 0; }
@@ -192,7 +197,7 @@ h4 small { text-transform: none; letter-spacing: 0; font-weight: 400; color: var
 .j-tog:hover::before { background: var(--panel-border); }
 .j-tog:hover::after { opacity: 1; }
 .j-tog:focus-visible { outline: none; }
-.j-tog:focus-visible::before { outline: 2px solid var(--accent); }
+.j-tog:focus-visible::before { outline: 2px solid var(--panel-accent); }
 .j-sum { display: none; margin: 0 .3em; padding: 0 .6em; font: inherit; font-size: .88em; line-height: 1.45; color: var(--panel-muted); background: var(--panel); border: 1px solid var(--panel-border); border-radius: 999px; cursor: pointer; user-select: none; vertical-align: 1px; }
 .j-sum:hover { color: var(--panel-text); border-color: var(--panel-muted); }
 .j-fold.shut > .j-in { display: none; }
@@ -203,10 +208,10 @@ h4 small { text-transform: none; letter-spacing: 0; font-weight: 400; color: var
 .tabs { display: flex; flex-wrap: wrap; gap: 2px; margin-bottom: 10px; border-bottom: 1px solid var(--panel-border); }
 .tab { background: none; border: none; border-bottom: 2px solid transparent; color: var(--panel-muted); padding: 6px 10px; font-size: 13px; margin-bottom: -1px; }
 .tab:hover { color: var(--panel-text); }
-.tab[aria-selected="true"] { color: var(--panel-text); border-bottom-color: var(--accent); }
+.tab[aria-selected="true"] { color: var(--panel-text); border-bottom-color: var(--panel-accent); }
 .install { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: 10px 0 0; font-size: 12.5px; color: var(--panel-muted); }
 .install-btn { display: inline-block; text-decoration: none; padding: 5px 12px; font-size: 13px; color: var(--text); }
-.install-btn:hover { border-color: var(--accent); }
+.install-btn:hover { border-color: var(--panel-accent); }
 .install-note code { background: transparent; border-color: var(--panel-border); color: var(--panel-text); }
 .tab-hint { font-size: 12.5px; color: var(--panel-muted); margin: 0 0 8px; }
 .tab-hint code { background: transparent; border-color: var(--panel-border); color: var(--panel-text); }
@@ -240,6 +245,7 @@ h4 small { text-transform: none; letter-spacing: 0; font-weight: 400; color: var
 
 /* ---------- accessibility ---------- */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.row > .r :focus-visible { outline-color: var(--panel-accent); }
 .search input:focus-visible { outline: none; }
 main:focus { outline: none; }
 .skip { position: absolute; left: 8px; top: -48px; z-index: 20; padding: 8px 14px; border-radius: 6px; background: var(--bg); border: 1px solid var(--accent); }

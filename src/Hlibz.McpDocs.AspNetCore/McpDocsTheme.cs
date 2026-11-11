@@ -23,11 +23,12 @@ internal static partial class McpDocsTheme
     public static string Resolve(string url, string pathBase) => url.StartsWith("~/", StringComparison.Ordinal) ? pathBase + "/" + url[2..] : url;
 
     // Dark palettes: bg, sidebar, surface, text, muted, faint, border, accent, panel, panel-2, panel-border.
+    // A panel a step lighter than the page keeps the two columns apart; a darker one all but disappears.
     private static string? Preset(McpDocsDarkPreset p) => p switch
     {
-        McpDocsDarkPreset.Midnight => "--bg:#0b1020;--sidebar:#0e1428;--surface:#131a33;--text:#e6e9f5;--muted:#9aa3c4;--faint:#8892b8;--border:#1f2848;--accent:#7aa2ff;--panel:#070b17;--panel-2:#0e1428;--panel-border:#1b2442;",
+        McpDocsDarkPreset.Midnight => "--bg:#0b1020;--sidebar:#0e1428;--surface:#131a33;--text:#e6e9f5;--muted:#9aa3c4;--faint:#8892b8;--border:#1f2848;--accent:#7aa2ff;--panel:#121a33;--panel-2:#18213f;--panel-border:#283358;",
         McpDocsDarkPreset.Nord => "--bg:#2e3440;--sidebar:#292e39;--surface:#3b4252;--text:#eceff4;--muted:#a9b3c6;--faint:#a8b3c8;--border:#434c5e;--accent:#88c0d0;--panel:#242933;--panel-2:#2e3440;--panel-border:#3b4252;",
-        McpDocsDarkPreset.GitHubDark => "--bg:#0d1117;--sidebar:#010409;--surface:#161b22;--text:#e6edf3;--muted:#9198a1;--faint:#8b949e;--border:#30363d;--accent:#4493f8;--panel:#010409;--panel-2:#0d1117;--panel-border:#30363d;",
+        McpDocsDarkPreset.GitHubDark => "--bg:#0d1117;--sidebar:#010409;--surface:#161b22;--text:#e6edf3;--muted:#9198a1;--faint:#8b949e;--border:#30363d;--accent:#4493f8;--panel:#161b22;--panel-2:#1c2128;--panel-border:#30363d;",
         _ => null,
     };
 
@@ -37,11 +38,23 @@ internal static partial class McpDocsTheme
     public static string Build(McpDocsOptions o)
     {
         var sb = new StringBuilder();
-        if (o.PrimaryColor is { } light) sb.Append(":root{").Append(Accent(light, 9)).Append("}\n");
+
+        // The code panel is dark in both modes, so its accent is a dark-mode colour: the dark one when given,
+        // else the light one mixed toward white (a brand colour picked for white pages is too dark on the panel).
+        var panelAccent = o.DarkModePrimaryColor is { } given ? $"--panel-accent:{given};"
+            : o.PrimaryColor is { } brand ? $"--panel-accent:color-mix(in oklab,{brand} 55%,white);"
+            : "";
+
+        if (o.PrimaryColor is not null || panelAccent.Length > 0)
+        {
+            sb.Append(":root{");
+            if (o.PrimaryColor is { } light) sb.Append(Accent(light, 9));
+            sb.Append(panelAccent).Append("}\n");
+        }
 
         var dark = new StringBuilder(Preset(o.DarkPreset));
         var darkColor = o.DarkModePrimaryColor ?? o.PrimaryColor;
-        if (darkColor is not null) dark.Append(Accent(darkColor, 12));
+        if (darkColor is not null) dark.Append(Accent(darkColor, 12)).Append(panelAccent);
         else if (o.DarkPreset != McpDocsDarkPreset.Default) dark.Append("--accent-soft:color-mix(in srgb,var(--accent) 12%,transparent);");
         if (dark.Length > 0)
         {

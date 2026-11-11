@@ -68,6 +68,17 @@ public class PageTests
         Assert.Contains("--accent:#0a7f5a", css);
         Assert.Contains("#2e3440", css);
         Assert.Contains("h1 { color: red; }", css);
+        // The code panel is dark in both modes: a brand colour picked for white pages is lightened there.
+        Assert.Contains("--panel-accent:color-mix(in oklab,#0a7f5a 55%,white);", css);
+    }
+
+    [Fact]
+    public void Panel_accent_is_the_dark_mode_colour_when_one_is_given()
+    {
+        var css = McpDocsTheme.Build(new McpDocsOptions { PrimaryColor = "#0a7f5a", DarkModePrimaryColor = "#5fd3a6" });
+        Assert.Contains(":root{--accent:#0a7f5a;", css);
+        Assert.Equal(3, System.Text.RegularExpressions.Regex.Matches(css, "--panel-accent:#5fd3a6;").Count); // light, system dark, toggled dark
+        Assert.Equal("", McpDocsTheme.Build(new McpDocsOptions())); // defaults live in app.css
     }
 
     [Fact]
