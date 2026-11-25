@@ -3,7 +3,7 @@
     <PropertyGroup>
         <!-- The release tag overrides this with -p:Version, so it only matters for local packs and
              branch builds. -->
-        <Version>0.2.0-preview.2</Version>
+        <Version>0.2.0</Version>
     </PropertyGroup>
 
     <PropertyGroup>

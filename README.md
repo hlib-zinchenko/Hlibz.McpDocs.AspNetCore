@@ -53,13 +53,13 @@ I'll do my best to keep the project moving.
 ## Install
 
 ```bash
-dotnet add package Hlibz.McpDocs.AspNetCore --prerelease
+dotnet add package Hlibz.McpDocs.AspNetCore
 ```
 
 With central package management, set the version in `Directory.Packages.props`:
 
 ```xml
-<PackageVersion Include="Hlibz.McpDocs.AspNetCore" Version="0.2.0-preview.2" />
+<PackageVersion Include="Hlibz.McpDocs.AspNetCore" Version="0.2.0" />
 ```
 
 ## Quick start
