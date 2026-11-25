@@ -994,6 +994,44 @@
     }
   };
 
+  // What a result puts in the model's context, by the same ~4 characters per token as the definitions: text content,
+  // embedded resource text, prompt messages. A tool's structuredContent counts only when it has no content: clients
+  // pass content on, and servers repeat structured output there as text. Images, audio and blobs aren't text, so
+  // they are listed beside the estimate rather than guessed at.
+  function resultTokens(kind, res) {
+    var chars = 0, other = { image: 0, audio: 0, binary: 0 };
+    function contents(c) {
+      if (typeof c.text === 'string') chars += c.text.length;
+      else if (typeof c.blob === 'string') other.binary++;
+    }
+    function block(b) {
+      if (!b || typeof b !== 'object') return;
+      if (b.type === 'text') chars += String(b.text == null ? '' : b.text).length;
+      else if (b.type === 'resource') contents(b.resource || {});
+      else if (b.type === 'image' || b.type === 'audio') other[b.type]++;
+      else chars += JSON.stringify(b).length;
+    }
+    if (kind === 'tool') {
+      var content = Array.isArray(res.content) ? res.content : [];
+      content.forEach(block);
+      if (!content.length && res.structuredContent !== undefined) chars += JSON.stringify(res.structuredContent).length;
+    } else if (kind === 'prompt') {
+      (Array.isArray(res.messages) ? res.messages : []).forEach(function (m) { block(m && m.content); });
+    } else {
+      (Array.isArray(res.contents) ? res.contents : []).forEach(function (c) { if (c && typeof c === 'object') contents(c); });
+    }
+    return { tokens: Math.ceil(chars / 4), other: other };
+  }
+  function resultTokensNote(kind, res) {
+    var t = resultTokens(kind, res), extra = ['image', 'audio', 'binary'].filter(function (k) { return t.other[k]; }).map(function (k) {
+      var n = t.other[k];
+      return n + ' ' + (k === 'image' ? (n === 1 ? 'image' : 'images') : k === 'audio' ? 'audio' : (n === 1 ? 'blob' : 'blobs'));
+    });
+    return el('span', { class: 'ti-tokens',
+      title: 'Estimated size of this result in the model\u2019s context: its text, about 4 characters per token' + (extra.length ? '. Images, audio and blobs aren\u2019t counted.' : '.'),
+      text: '~' + fmtTokens(t.tokens) + ' tokens' + (extra.length ? ' + ' + extra.join(', ') : '') });
+  }
+
   // r: the fetch Response; ms: round trip. Everything the server sent stays one click away under Raw response.
   function responseView(kind, r, text, ms) {
     var msgs = parseMessages(r, text);
@@ -1002,8 +1040,9 @@
     var notes = msgs.filter(function (m) { return typeof m.method === 'string'; });
     // Green: the call worked. Amber: HTTP was fine but the call failed (JSON-RPC error, isError). Red: HTTP failed.
     var ok = r.ok && answer && answer.result !== undefined && !(answer.result && answer.result.isError);
-    var out = [el('div', { class: 'ti-status' }, el('span', { class: 'badge ' + (ok ? 'ok' : r.ok ? 'warn' : 'danger'), text: r.status + (r.statusText ? ' ' + r.statusText : '') }),
-      el('span', { text: Math.round(ms) + ' ms' }))];
+    var status = el('div', { class: 'ti-status' }, el('span', { class: 'badge ' + (ok ? 'ok' : r.ok ? 'warn' : 'danger'), text: r.status + (r.statusText ? ' ' + r.statusText : '') }),
+      el('span', { text: Math.round(ms) + ' ms' }));
+    var out = [status];
     var www = r.headers.get('www-authenticate');
     if (r.status === 401) out.push(banner('danger', 'Unauthorized: the token is missing or invalid.', www ? el('code', { text: 'WWW-Authenticate: ' + www }) : null));
     else if (r.status === 403) out.push(banner('danger', 'Forbidden: the server knows who you are, but this credential may not call it.'));
@@ -1015,7 +1054,10 @@
       var res = answer.result;
       if (res && typeof res.resultType === 'string' && res.resultType !== 'complete') {
         out.push(banner('warn', 'The server asked for input the console can’t give (resultType: ' + res.resultType + ').'), jsonView(res));
-      } else out.push(RESULT_VIEWS[kind](res || {}));
+      } else {
+        status.appendChild(resultTokensNote(kind, res || {}));
+        out.push(RESULT_VIEWS[kind](res || {}));
+      }
     } else if (r.status !== 401 && r.status !== 403) {
       out.push(banner(r.ok ? 'warn' : 'danger', r.ok ? 'The response carried no answer to this request.' : 'The request failed with HTTP ' + r.status + '.'));
     }
@@ -1160,6 +1202,8 @@
     var response = el('div', { class: 'ti-response', 'aria-live': 'polite' });
     if (draft && draft.response) append(response, draft.response);
     var pre = el('pre', { class: 'code ti-request' });
+    // A tool call is what the model writes: its arguments, at the same ~4 characters per token.
+    var argTokens = kind === 'tool' ? el('span', { class: 'ti-tokens', title: 'Estimated size of the arguments the model writes to call this tool, about 4 characters per token.' }) : null;
     var sendBtn = el('button', { type: 'button', class: 'ti-send ' + level, text: 'Send' });
     var state = {
       opener: opener,
@@ -1168,8 +1212,13 @@
         return buildRequest(q.method, q.params, q.name, q.headers);
       },
       preview: function () {
-        try { pre.textContent = requestText(state.build()); error.hidden = true; }
+        var req = null;
+        try { req = state.build(); pre.textContent = requestText(req); error.hidden = true; }
         catch (e) { pre.textContent = ''; }
+        if (argTokens) {
+          argTokens.hidden = !req;
+          if (req) argTokens.textContent = 'arguments ~' + fmtTokens(Math.ceil(JSON.stringify(req.body.params.arguments || {}).length / 4)) + ' tokens';
+        }
       },
       save: function () {
         tiDrafts[entry._id] = { form: form.draft(), response: response.childNodes.length && !response.querySelector('.ti-pending') ? [].slice.call(response.childNodes) : null };
@@ -1210,7 +1259,7 @@
           copyText(curlOf(req)).then(function (ok) { b.textContent = ok ? 'Copied' : 'Copy failed'; setTimeout(function () { b.textContent = 'Copy as curl'; }, 1400); });
         } })),
       SEND_NOTES[level] ? el('p', { class: 'ti-note ' + level, text: SEND_NOTES[level] }) : null,
-      el('details', { class: 'ti-fold' }, el('summary', { text: 'Request' }), pre),
+      el('details', { class: 'ti-fold' }, el('summary', null, 'Request', argTokens), pre),
       el('h3', { class: 'ti-h', text: 'Response' }),
       response
     ]);

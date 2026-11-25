@@ -11,6 +11,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Playwright;
 
 using ModelContextProtocol;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 using Xunit;
@@ -103,6 +104,10 @@ public class TryItBehaviourTests : IAsyncLifetime
 
         [McpServerTool(Name = "regional", ReadOnly = true), Description("Per region.")]
         public string Regional([McpHeader("Region"), Description("Region")] string region) => "in " + region;
+
+        [McpServerTool(Name = "chart", ReadOnly = true), Description("A caption and an image.")]
+        public IEnumerable<ContentBlock> Chart() =>
+            [new TextContentBlock { Text = new string('x', 400) }, ImageContentBlock.FromBytes(new byte[] { 0x89, 0x50, 0x4E, 0x47 }, "image/png")];
     }
 
     [McpServerResourceType]
@@ -192,6 +197,46 @@ public class TryItBehaviourTests : IAsyncLifetime
         string preview = await Eval<string>(page, "document.querySelector('dialog.ti .ti-request').textContent");
         Assert.Contains("Authorization: Bearer ••••••", preview);
         Assert.DoesNotContain("admin", preview);
+    }
+
+    [Fact]
+    public async Task Token_estimates_show_for_the_arguments_and_the_result()
+    {
+        IPage page = await OpenAsync();
+        await TryAsync(page, "tool/echo");
+        await page.FillAsync("dialog.ti .ti-json", "{ \"message\": \"hi\" }"); // {"message":"hi"}: 16 characters
+        Assert.Equal(["arguments ~4 tokens"], await Texts(page, ".ti-fold summary .ti-tokens"));
+        await page.FillAsync("dialog.ti .ti-json", "{ \"message\": \"" + new string('a', 386) + "\" }"); // 400 characters
+        Assert.Equal(["arguments ~100 tokens"], await Texts(page, ".ti-fold summary .ti-tokens"));
+        await SendAsync(page);
+        Assert.Equal(["~97 tokens"], await Texts(page, ".ti-status .ti-tokens")); // the text content, not the JSON-RPC envelope
+
+        // Invalid arguments: no estimate rather than a stale one.
+        await page.FillAsync("dialog.ti .ti-json", "{ nope");
+        Assert.True(await Eval<bool>(page, "document.querySelector('dialog.ti .ti-fold summary .ti-tokens').hidden"));
+
+        // An image isn't text: listed beside the estimate, not counted.
+        await page.Keyboard.PressAsync("Escape");
+        await TryAsync(page, "tool/chart");
+        await SendAsync(page);
+        Assert.Equal(["~100 tokens + 1 image"], await Texts(page, ".ti-status .ti-tokens"));
+
+        // Prompts and resources have no arguments the model writes, but their result lands in the context too.
+        await page.Keyboard.PressAsync("Escape");
+        await TryAsync(page, "template/thing");
+        Assert.Empty(await Texts(page, ".ti-fold summary .ti-tokens"));
+        await page.FillAsync("dialog.ti input[data-name=id]", "abc");
+        await SendAsync(page);
+        Assert.Equal(["~3 tokens"], await Texts(page, ".ti-status .ti-tokens")); // "thing abc"
+    }
+
+    [Fact]
+    public async Task No_result_estimate_for_a_JSON_RPC_error()
+    {
+        IPage page = await OpenAsync();
+        await TryAsync(page, "tool/wipe");
+        await SendAsync(page);
+        Assert.Empty(await Texts(page, ".ti-status .ti-tokens"));
     }
 
     [Fact]

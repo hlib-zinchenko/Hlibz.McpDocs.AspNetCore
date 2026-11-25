@@ -217,6 +217,12 @@ Its colour follows the tool's annotations: the accent for read-only tools, amber
 destructive tools and for tools with no annotations (the spec's defaults assume the worst), with a line saying so.
 Use `ReadOnlyOnly` for docs in front of a real system.
 
+**Token estimates.** Like the `~N tokens` badge on each tool, by the same ~4 characters per token: a tool's
+Request shows the size of its arguments (what the model writes to call it), and each response the size of what
+lands in the model's context: text content, embedded resource text, a prompt's messages. A tool's
+`structuredContent` counts only when it has no `content`, since servers repeat it there as text. Images, audio and
+blobs are listed beside the estimate, not counted. A JSON-RPC error gets none.
+
 **Where there's no button.** On a static export (a file can't call the server), for a stdio server, when the MCP
 endpoint is on another origin (it answers no CORS preflight, and the page's `connect-src` is `'self'`), and when the
 server is `SessionMode = Stateful`, which refuses the stateless shape (`StatefulForInitializeClients` works). The
