@@ -59,7 +59,7 @@ dotnet add package Hlibz.McpDocs.AspNetCore --prerelease
 With central package management, set the version in `Directory.Packages.props`:
 
 ```xml
-<PackageVersion Include="Hlibz.McpDocs.AspNetCore" Version="0.2.0-preview.1" />
+<PackageVersion Include="Hlibz.McpDocs.AspNetCore" Version="0.2.0-preview.2" />
 ```
 
 ## Quick start
