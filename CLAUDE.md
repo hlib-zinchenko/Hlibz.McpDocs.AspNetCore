@@ -6,7 +6,8 @@ Guidance for Claude Code when working in this repository.
 
 One NuGet package, `src/Hlibz.McpDocs.AspNetCore`: a read-only, ReDoc-style documentation page for
 MCP servers hosted in ASP.NET Core (`MapMcpDocs`). It builds `catalog.json` from what the MCP SDK
-already registered (`McpServerOptions` collections), per viewer, and serves the page, the catalog and
+already registered (`McpServerOptions` collections), lists `[Authorize]`d primitives with their requirements
+(`GatedPrimitives = Show`, the default) or per viewer (`Hide`), and serves the page, the catalog and
 exports (`catalog.md`, `llms.txt`, `server.json`, a self-contained `docs.html`). The README's
 Development section maps each source file to what it does; keep that map in step.
 

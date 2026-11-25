@@ -51,16 +51,16 @@ public class StaticExportTests
         JsonNode snapshot = JsonNode.Parse(await McpDocsSnapshot.CreateAsync(app.App.Services, includePresentation: true))!;
         Assert.True(JsonNode.DeepEquals(snapshot["tools"], cat["tools"]));
         Assert.True(JsonNode.DeepEquals(snapshot["resourceTemplates"], cat["resourceTemplates"]));
-        Assert.DoesNotContain("delete_thing", html);
+        Assert.Contains("delete_thing", html);
     }
 
     [Fact]
-    public async Task Viewer_decides_what_the_file_shows()
+    public async Task With_Hide_the_viewer_decides_what_the_file_shows()
     {
         await using TestApp app = await TestApp.StartAsync();
         ClaimsPrincipal admin = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Name, "tester"), new Claim(ClaimTypes.Role, "admin")], "Test"));
-        string html = await McpDocsSnapshot.CreateHtmlAsync(app.App.Services, viewer: admin);
-        Assert.Contains("delete_thing", html);
+        Assert.DoesNotContain("delete_thing", await McpDocsSnapshot.CreateHtmlAsync(app.App.Services, o => o.GatedPrimitives = McpDocsGatedPrimitives.Hide));
+        Assert.Contains("delete_thing", await McpDocsSnapshot.CreateHtmlAsync(app.App.Services, o => o.GatedPrimitives = McpDocsGatedPrimitives.Hide, viewer: admin));
     }
 
     [Fact]
@@ -210,9 +210,9 @@ public class StaticExportTests
     }
 
     [Fact]
-    public async Task Download_shows_what_the_viewer_sees()
+    public async Task With_Hide_the_download_shows_what_the_viewer_sees()
     {
-        await using TestApp app = await TestApp.StartAsync();
+        await using TestApp app = await TestApp.StartAsync(o => o.GatedPrimitives = McpDocsGatedPrimitives.Hide);
         Assert.DoesNotContain("delete_thing", await app.Client().GetStringAsync("/mcp-docs/docs.html", TestContext.Current.CancellationToken));
         Assert.Contains("delete_thing", await app.Client("admin").GetStringAsync("/mcp-docs/docs.html", TestContext.Current.CancellationToken));
     }

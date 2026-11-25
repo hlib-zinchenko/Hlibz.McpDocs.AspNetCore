@@ -478,7 +478,8 @@
   }
 
   // ---------------------------------------------------------------- authorization
-  // entry.authorization is present only on [Authorize]d primitives the viewer is allowed to see.
+  // entry.authorization is present on every [Authorize]d primitive listed: all of them by default, or with
+  // GatedPrimitives = Hide (docs.filtersGated) only those the viewer is allowed to see.
   // roles: inner array = any of, outer = all of (several [Authorize(Roles = …)]).
   function authParts(a) {
     var parts = [];
@@ -494,7 +495,7 @@
   function lockBadge(a) {
     if (!a) return null;
     var parts = authParts(a);
-    return el('span', { class: 'badge lock', title: 'Requires authorization' + (parts.length ? ': ' + parts.join('; ') : ' (any signed-in user)') + '. Shown because you have access.' },
+    return el('span', { class: 'badge lock', title: 'Requires authorization' + (parts.length ? ': ' + parts.join('; ') : ' (any signed-in user)') + (FILTERS_GATED ? '. Shown because you have access.' : '. The server refuses callers without it.') },
       el('span', { class: 'ic', html: ICON_LOCK }), authLabel(a));
   }
   function authSearch(a) { return a ? ['restricted', authLabel(a)].concat(authParts(a)).join(' ') : ''; }
@@ -811,7 +812,7 @@
     return src ? el('img', { class: 'mcp-icon ' + (cls || ''), src: src, alt: '', width: 16, height: 16, loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' }) : null;
   }
 
-  var SHOW_META = false;
+  var SHOW_META = false, FILTERS_GATED = false;
   // entry.issues: description checks from the server (missing descriptions, missing annotations).
   function issueBadge(entry) {
     var n = entry.issues && entry.issues.length;
@@ -852,6 +853,7 @@
     assignIds([['tool', tools], ['prompt', prompts], ['resource', resources], ['template', templates]]);
     var groups = groupTools(tools);
     SHOW_META = d.showMeta === true;
+    FILTERS_GATED = d.filtersGated === true;
     var title = d.title || server.title || server.name || 'MCP server';
     document.title = title;
     var fav = (typeof d.favicon === 'string' && d.favicon) || iconUrl(server.icons);

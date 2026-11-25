@@ -12,7 +12,7 @@ using Sample.McpServer.Tools;
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 // Demo auth: a cookie set by /demo/sign-in. A real server would use JWT bearer / OAuth for MCP clients;
-// the docs page evaluates [Authorize] against whoever the browser is signed in as.
+// with GatedPrimitives = Hide the docs page evaluates [Authorize] against whoever the browser is signed in as.
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie();
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("Finance", p => p.RequireRole("finance"));
@@ -48,6 +48,9 @@ static void Docs(McpDocsOptions o)
     o.AuthHeader = "Authorization";
     o.AuthHint = "Ask in [#acme-integrations](https://example.com/slack) for a personal access token.";
     o.AddToolbarItem("Changelog", "https://example.com/changelog");
+    // [Authorize]d primitives are listed for everyone, with what they require. To list them per viewer instead,
+    // uncomment this and sign in with /demo/sign-in?roles=admin,finance:
+    // o.GatedPrimitives = McpDocsGatedPrimitives.Hide;
     // o.DefaultColorMode = McpDocsColorMode.Dark; o.DarkPreset = McpDocsDarkPreset.Nord; o.PrimaryColor = "#0a7f5a";
 }
 
@@ -68,7 +71,7 @@ app.MapGet("/", () => Results.Redirect("/mcp-docs/"));
 
 if (app.Environment.IsDevelopment())
 {
-    // /demo/sign-in?roles=admin,finance → reload the docs page to see the gated primitives.
+    // /demo/sign-in?roles=admin,finance → with GatedPrimitives = Hide, reload the docs page to see the gated primitives.
     app.MapGet("/demo/sign-in", async (HttpContext ctx, string? roles) =>
     {
         List<Claim> claims = new List<Claim> { new(ClaimTypes.Name, "demo") };

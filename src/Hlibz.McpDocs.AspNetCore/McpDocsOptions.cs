@@ -50,6 +50,14 @@ public sealed class McpDocsOptions
     public string? AuthHint { get; set; }
 
     /// <summary>
+    /// Whether primitives gated with <c>[Authorize]</c> are listed for every viewer or only for those who pass their
+    /// policy. Defaults to <see cref="McpDocsGatedPrimitives.Show"/>: like OpenAPI docs, the page documents
+    /// everything the server offers, marks what each gated primitive requires, and the MCP endpoint still refuses
+    /// callers without it.
+    /// </summary>
+    public McpDocsGatedPrimitives GatedPrimitives { get; set; } = McpDocsGatedPrimitives.Show;
+
+    /// <summary>
     /// Show each primitive's <c>_meta</c> on the page. Off by default: it is often implementation detail,
     /// and when off it is also left out of <c>catalog.json</c>.
     /// </summary>
@@ -176,6 +184,23 @@ public static class McpDocsGrouping
         int i = name.IndexOfAny(['_', '.', '-']);
         return i > 0 ? name[..i] : null;
     }
+}
+
+/// <summary>How the docs page treats primitives gated with <c>[Authorize]</c>, set through <see cref="McpDocsOptions.GatedPrimitives"/>.</summary>
+public enum McpDocsGatedPrimitives
+{
+    /// <summary>
+    /// List them for every viewer, with a lock badge naming the roles and policies they require. The catalog is the
+    /// same for everyone and no policy is evaluated. The default.
+    /// </summary>
+    Show,
+
+    /// <summary>
+    /// List them only for viewers who pass their policy, the way the SDK's <c>AddAuthorizationFilters()</c> filters
+    /// <c>tools/list</c>: a viewer sees what their MCP client would. The viewer is whoever the browser is signed
+    /// in as, usually by cookie, so in an app whose MCP clients send bearer tokens most viewers see the anonymous view.
+    /// </summary>
+    Hide,
 }
 
 /// <summary>Colour mode for first-time viewers.</summary>

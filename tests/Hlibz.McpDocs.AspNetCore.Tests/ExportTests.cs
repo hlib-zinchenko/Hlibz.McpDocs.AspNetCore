@@ -14,9 +14,18 @@ namespace Hlibz.McpDocs.AspNetCore.Tests;
 public class ExportTests
 {
     [Fact]
-    public async Task Markdown_lists_the_catalog_and_hides_what_the_viewer_may_not_see()
+    public async Task Markdown_lists_gated_tools_with_what_they_require_by_default()
     {
         await using TestApp app = await TestApp.StartAsync();
+        string anon = await app.Client().GetStringAsync("/mcp-docs/catalog.md", TestContext.Current.CancellationToken);
+        Assert.Contains("### delete_thing", anon);
+        Assert.Contains("Requires: role `admin`", anon);
+    }
+
+    [Fact]
+    public async Task Markdown_lists_the_catalog_and_with_Hide_hides_what_the_viewer_may_not_see()
+    {
+        await using TestApp app = await TestApp.StartAsync(o => o.GatedPrimitives = McpDocsGatedPrimitives.Hide);
         string anon = await app.Client().GetStringAsync("/mcp-docs/catalog.md", TestContext.Current.CancellationToken);
         string admin = await app.Client("admin").GetStringAsync("/mcp-docs/catalog.md", TestContext.Current.CancellationToken);
 
@@ -128,7 +137,7 @@ public class ExportTests
         Assert.StartsWith("# Test Server", text);
         Assert.Contains("(http://localhost/mcp-docs/catalog.md)", text);
         Assert.Contains("- `get_thing`: Gets a thing.", text);
-        Assert.DoesNotContain("delete_thing", text);
+        Assert.Contains("`delete_thing`", text);
     }
 
     [Fact]

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 
+using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Server;
 
@@ -35,8 +36,20 @@ public class AuthorizationTests
         Assert.Contains(await admin.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken), t => t.Name == "delete_thing");
     }
 
+    /// <summary>Listing a gated tool on the page (the default) changes nothing about who may call it.</summary>
+    [Fact]
+    public async Task Gated_tools_listed_on_the_page_are_still_refused_to_anonymous_callers()
+    {
+        await using TestApp app = await TestApp.StartAsync();
+        Assert.Contains("delete_thing", await app.Client().GetStringAsync("/mcp-docs/catalog.json", TestContext.Current.CancellationToken));
+
+        await using McpClient anon = await app.McpAsync();
+        await Assert.ThrowsAsync<McpProtocolException>(async () =>
+            await anon.CallToolAsync("delete_thing", new Dictionary<string, object?> { ["id"] = "t-1" }, cancellationToken: TestContext.Current.CancellationToken));
+    }
+
     /// <summary>
-    /// The docs page decides visibility with its own copy of the SDK's authorization rules. This compares the two
+    /// With GatedPrimitives = Hide the docs page decides visibility with its own copy of the SDK's authorization rules. This compares the two
     /// for every kind of metadata and viewer, so a newer SDK that filters differently (the weekly job runs these
     /// tests against the newest one) fails here instead of showing a viewer what their client wouldn't list.
     /// </summary>
@@ -53,6 +66,7 @@ public class AuthorizationTests
     public async Task The_page_lists_exactly_what_the_server_lists_for_each_viewer(string? roles)
     {
         await using TestApp app = await TestApp.StartAsync(
+            o => o.GatedPrimitives = McpDocsGatedPrimitives.Hide,
             server: s => s.WithTools<GatedTools>().WithPrompts<GatedPrompts>().WithResources<GatedResources>(),
             authorization: o => o.AddPolicy("Editors", p => p.RequireRole("editor")));
 

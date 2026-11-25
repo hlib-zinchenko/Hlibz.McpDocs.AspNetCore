@@ -10,8 +10,8 @@ namespace Hlibz.McpDocs.AspNetCore;
 
 /// <summary>
 /// Applies <c>[Authorize]</c> / <c>[AllowAnonymous]</c> on tools, prompts and resources the same way the SDK's
-/// <c>AddAuthorizationFilters()</c> does for <c>tools/list</c> etc., so the docs page never shows a viewer
-/// a primitive their MCP client wouldn't see. Mirrors ModelContextProtocol.AspNetCore 2.3.1
+/// <c>AddAuthorizationFilters()</c> does for <c>tools/list</c> etc., so with <see cref="McpDocsGatedPrimitives.Hide"/>
+/// the docs page never shows a viewer a primitive their MCP client wouldn't see. Mirrors ModelContextProtocol.AspNetCore 2.3.1
 /// <c>AuthorizationFilterSetup</c>; <c>AuthorizationTests.The_page_lists_exactly_what_the_server_lists_for_each_viewer</c>
 /// checks the two agree, and runs weekly against the newest SDK.
 /// </summary>

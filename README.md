@@ -22,7 +22,8 @@ app.MapMcpDocs("/mcp-docs");   // that's the whole zero-config path
   maps and enums included), annotation badges, and an example request and response you can fold.
 - **Connect snippets** for Claude Code, Claude Desktop, VS Code, Cursor and Goose, with
   one-click "Add to VS Code" and "Add to Cursor" buttons.
-- **`[Authorize]` is honoured.** A viewer only sees the primitives their MCP client would see.
+- **Documents everything, like OpenAPI docs.** `[Authorize]`d primitives are listed with a lock badge naming the
+  roles and policies they need; the endpoint still refuses callers without them. Or filter them per viewer.
 - **Exports for agents:** `catalog.json`, `catalog.md`, `llms.txt`, and a `server.json` for the MCP Registry.
 - **A static page too:** the same page as one HTML file, for GitHub Pages, readers who can't reach the app, or a stdio server.
 - **Checks your descriptions.** Missing descriptions and annotations are flagged on the page and logged at startup.
@@ -94,6 +95,7 @@ All optional. Set them in the `MapMcpDocs` callback.
 | `AuthHeader` | none | Adds this header, with `AuthPlaceholder`, to the snippets. |
 | `AuthPlaceholder` | `Bearer <token>` | Placeholder value for `AuthHeader`. |
 | `AuthHint` | none | How to get credentials (Markdown subset). |
+| `GatedPrimitives` | `Show` | `[Authorize]`d tools, prompts and resources: `Show` lists them for everyone with what they require; `Hide` lists them only for viewers who pass. See [Authorization](#authorization). |
 | `ToolGroup` | `McpDocsGrouping.ByAttribute` | Sidebar group per tool; also `ByNamePrefix`, `None`, or your own function. |
 | `HtmlExport` | `true` | A download button beside the theme toggle that saves the page as one HTML file (`{pattern}/docs.html`), as the viewer sees it. See [Static page](#static-page). |
 | `InstallLinks` | `true` | "Add to VS Code" / "Add to Cursor" buttons under the connect snippets. They open the editor's own install dialog; with `AuthHeader` set they carry the placeholder token. |
@@ -111,7 +113,7 @@ All optional. Set them in the `MapMcpDocs` callback.
 
 ## Exports for agents
 
-Next to `catalog.json`, the same per-viewer catalog is rendered as:
+Next to `catalog.json`, the same catalog is rendered as:
 
 - `catalog.md`: every tool, prompt and resource as Markdown, with parameter tables, annotations and required roles.
 - `llms.txt`: a short index in the [llms.txt](https://llmstxt.org) shape that links to `catalog.md`. It lives under
@@ -127,8 +129,7 @@ The page can be saved as one HTML file: styles, script and catalog inline, nothi
 opened from disk. Publish it on GitHub Pages, send it to someone who can't reach the app, or document a stdio
 server, which has no page to map.
 
-**From the page.** The download button beside the theme toggle saves `{pattern}/docs.html`: what that viewer
-sees, with the MCP endpoint, toolbar links and favicon made absolute for the host it was downloaded from. It sits
+**From the page.** The download button beside the theme toggle saves `{pattern}/docs.html`: the page as shown, with the MCP endpoint, toolbar links and favicon made absolute for the host it was downloaded from. It sits
 in the route group, so `.RequireAuthorization()` covers it. Set `HtmlExport = false` to remove the button and the
 route.
 
@@ -152,7 +153,8 @@ app.MapMcpDocs("/mcp-docs", ConfigureDocs);
   options) must be an absolute `http(s)` URL. For a stdio server pass the command a client runs instead,
   `stdioCommand: ["dnx", "Acme.Mcp", "--yes"]`, and the connect snippets start it. With neither, the page
   documents the primitives and has no connect panel.
-- **Whose view.** The file shows what `viewer` may see (anonymous by default) to everyone who opens it.
+- **Whose view.** With `GatedPrimitives = Hide`, the file shows what `viewer` may see (anonymous by default) to
+  everyone who opens it. By default every viewer's file is the same.
 - **Stable.** The same server and options give the same bytes, so a checked-in copy changes only when they do.
 - **Still strict.** A `<meta>` CSP allows the inline script and styles by their hashes, and nothing else.
 - **Links.** Use absolute URLs for toolbar items; a favicon path into the app is dropped in favour of the server
@@ -162,24 +164,34 @@ The sample has the switch above: `dotnet run --project samples/Sample.McpServer 
 
 ## Authorization
 
-`[Authorize]` on tools, prompts and resources is honoured the way the SDK's `AddAuthorizationFilters()` honours it
-for `tools/list` etc.: a viewer only sees the primitives their MCP client would see. Same rules — any
-`[AllowAnonymous]` on the class or method wins; otherwise `IAuthorizeData`, `AuthorizationPolicy` and
-`IAuthorizationRequirementData` metadata are combined into one policy and evaluated with `IAuthorizationService`
-against `HttpContext.User`. Gated primitives the viewer *can* see get a lock badge naming the roles / policies.
+Like OpenAPI docs, the page documents everything the server offers. A tool, prompt or resource gated with
+`[Authorize]` is listed for every viewer with a lock badge naming the roles and policies it requires, and
+`catalog.md` adds a "Requires:" line. Listing it changes nothing about who may call it: the MCP endpoint
+refuses callers who don't pass. The catalog is the same for everyone and no policy is evaluated.
 
-Two differences from the MCP endpoint, both inherent to a page opened in a browser:
+That suits the usual setup: MCP clients send a bearer token, and `/mcp-docs` is opened in a browser that has
+none. Endpoint-level auth (`app.MapMcp().RequireAuthorization()`) gates every call and hides nothing, so it
+needs nothing here.
+
+Only when a primitive's roles or descriptions are not for everyone who can open the page, either protect the
+page (`.RequireAuthorization()` on `MapMcpDocs`) or set `GatedPrimitives = Hide`. A viewer then only sees the
+primitives their MCP client would see, the way the SDK's `AddAuthorizationFilters()` filters `tools/list`. Same
+rules: any `[AllowAnonymous]` on the class or method wins; otherwise `IAuthorizeData`, `AuthorizationPolicy`
+and `IAuthorizationRequirementData` metadata are combined into one policy and evaluated with
+`IAuthorizationService` against `HttpContext.User`. With `Hide`, two things differ from the MCP endpoint, both
+inherent to a page opened in a browser:
 
 - **Identity is the browser's.** The docs request is authenticated by whatever the app's default scheme sees on
   it (usually a cookie), while MCP clients typically send a bearer token. If the browser isn't signed in, the page
-  shows the anonymous view.
+  shows the anonymous view, so gated primitives aren't documented for anyone who only has a token.
 - **The authorization resource is the `HttpContext`**, not the SDK's MCP request context. Resource-based
   handlers that look for the MCP context won't match here, and the primitive stays hidden.
 
 `catalog.json` is served `private, no-cache`; the ETag still hashes the content, so viewers with the same
 access share a cached build and get 304s.
 
-The sample signs in with a demo cookie: `/demo/sign-in?roles=admin,finance`, `/demo/sign-out`.
+The sample signs in with a demo cookie (`/demo/sign-in?roles=admin,finance`, `/demo/sign-out`). It makes a
+difference with `GatedPrimitives = Hide`, which the sample leaves commented out.
 
 ## Troubleshooting
 
@@ -187,7 +199,7 @@ The sample signs in with a demo cookie: `/demo/sign-in?roles=admin,finance`, `/d
 |---|---|---|
 | App stops right after starting, critical log about `McpEndpoint`; docs requests fail with the same message | The configured path matches no `MapMcp` route. | Fix the path, or remove `McpEndpoint` to use the discovered one. |
 | Warning: MCP endpoint requires authorization but the docs page doesn't | The page publishes the whole surface to anyone. | Add `.RequireAuthorization()` to `MapMcpDocs`, or accept it. |
-| Page shows fewer tools than `tools/list` | `[Authorize]` filtering uses the browser's identity (usually a cookie), not your MCP token; or the server uses a custom `ListToolsHandler`. | Sign in in the browser; custom handlers aren't visible to the page. |
+| Page shows fewer tools than `tools/list` | With `GatedPrimitives = Hide`, filtering uses the browser's identity (usually a cookie), not your MCP token; or the server uses a custom `ListToolsHandler`. | Sign in in the browser, or keep the default `Show`; custom handlers aren't visible to the page. |
 | Connect snippets show the wrong URL behind a proxy | `PathBase` or host differs from what the browser sees. | Set `McpEndpoint` to the public URL. |
 | Page is blank, console shows CSP errors | Your own CSP header replaced ours (an existing one is never overwritten). | Allow `script-src 'self'; style-src 'self'; img-src 'self' data: https:` for the docs path. |
 | Icon doesn't show | Only `https:` and `data:image/` icons are used. | Serve the icon over https or inline it. |
@@ -207,10 +219,11 @@ Mostly not a "never": this is where the project stands today, and much of it may
 
 ## Testing your contract
 
-`McpDocsSnapshot.CreateAsync(app.Services, viewer: …)` returns the catalog as stable, indented JSON
-without an HTTP request. Compare it to a checked-in file (or pass it to Verify) and a renamed
-parameter, a changed output schema or a dropped `[Authorize]` fails the build, the MCP equivalent of
-an OpenAPI diff. [`SnapshotTests.cs`](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/blob/main/tests/Hlibz.McpDocs.AspNetCore.Tests/SnapshotTests.cs) does this for an
+`McpDocsSnapshot.CreateAsync(app.Services)` returns the catalog as stable, indented JSON without an HTTP
+request. Compare it to a checked-in file (or pass it to Verify) and a renamed parameter, a changed output
+schema or a dropped `[Authorize]` (its requirements are part of the contract) fails the build, the MCP
+equivalent of an OpenAPI diff. With `GatedPrimitives = Hide`, pass `viewer:` to snapshot one role's view:
+[`SnapshotTests.cs`](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/blob/main/tests/Hlibz.McpDocs.AspNetCore.Tests/SnapshotTests.cs) does this for an
 anonymous and an admin viewer; `UPDATE_SNAPSHOTS=1 dotnet test` accepts a change.
 
 The snapshot is the contract only: definitions, capabilities, instructions and authorization. How the page
@@ -221,8 +234,8 @@ nothing. Pass `includePresentation: true` for the whole catalog the page is buil
 
 - Targets `net10.0` and `net11.0`. CI builds and tests on both runtimes.
 - Built against `ModelContextProtocol.AspNetCore` 2.3.1 and accepts any 2.x. Authorization mirrors that
-  version's `AddAuthorizationFilters()`; a test compares what the page shows each viewer with what the
-  server lists them, and a weekly CI job runs it against the newest stable SDK. 3.0 and later are outside
+  version's `AddAuthorizationFilters()`; a test compares what the page shows each viewer under
+  `GatedPrimitives = Hide` with what the server lists them, and a weekly CI job runs it against the newest stable SDK. 3.0 and later are outside
   the range until they've been checked.
 - `IsAotCompatible`: endpoints are `RequestDelegate`s, and the library builds with no trim warnings.
 - Connect snippets follow the clients' current documentation (VS Code and Cursor install links, Goose
@@ -269,7 +282,7 @@ runs the tests weekly against the newest MCP SDK. Actions are pinned by commit S
 ```
 src/Hlibz.McpDocs.AspNetCore/
   McpDocsOptions.cs                          options, [McpDocsGroup], grouping strategies
-  McpDocsCatalog.cs                          catalog.json from McpServerOptions collections, per viewer
+  McpDocsCatalog.cs                          catalog.json from McpServerOptions collections
   McpDocsAuthorization.cs                    [Authorize] evaluation, mirrors the SDK's list filters
   McpDocsEndpointRouteBuilderExtensions.cs   MapMcpDocs: page, catalog, exports, _assets/*
   McpDocsEndpointDiscovery.cs                finds the MapMcp route, startup checks

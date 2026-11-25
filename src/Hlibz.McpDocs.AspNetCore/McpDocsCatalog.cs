@@ -17,9 +17,11 @@ namespace Hlibz.McpDocs.AspNetCore;
 /// not from our own reflection. Each tool/prompt/resource is serialized with the SDK's own JSON options,
 /// so the definitions are byte-for-byte what <c>tools/list</c> etc. return.
 /// <para>
-/// The catalog is per viewer: primitives gated with <c>[Authorize]</c> are left out unless the viewer passes their
-/// policy, exactly as <c>AddAuthorizationFilters()</c> filters the list methods. The serialized result is cached
-/// per set of visible primitives, so the ETag still identifies content, not requests.
+/// With <see cref="McpDocsGatedPrimitives.Show"/> (the default) the catalog lists every primitive, gated ones with
+/// their requirements, and is the same for every viewer. With <see cref="McpDocsGatedPrimitives.Hide"/> it is per
+/// viewer: primitives gated with <c>[Authorize]</c> are left out unless the viewer passes their policy, exactly as
+/// <c>AddAuthorizationFilters()</c> filters the list methods. The serialized result is cached per set of visible
+/// primitives, so the ETag still identifies content, not requests.
 /// </para>
 /// </summary>
 internal sealed class McpDocsCatalog
@@ -39,7 +41,7 @@ internal sealed class McpDocsCatalog
     private readonly string? _endpoint;
     private readonly string _pathBase;
     private readonly Item[] _items;
-    private readonly int[] _gated; // indexes into _items
+    private readonly int[] _gated; // indexes into _items; empty when gated primitives are shown to everyone
     private readonly ConcurrentDictionary<string, Result> _results = new(StringComparer.Ordinal);
 
     public McpDocsCatalog(McpServerOptions server, McpDocsOptions docs, string? resolvedEndpoint, string pathBase = "")
@@ -61,12 +63,14 @@ internal sealed class McpDocsCatalog
 
         _items = tools.Concat(prompts).Concat(resources).Concat(templates)
             .Select(x => new Item(x.Item1, x.Item2, McpDocsAuthorization.IsGated(x.Item2))).ToArray();
-        _gated = Enumerable.Range(0, _items.Length).Where(i => _items[i].Gated).ToArray();
+        _gated = docs.GatedPrimitives == McpDocsGatedPrimitives.Hide
+            ? Enumerable.Range(0, _items.Length).Where(i => _items[i].Gated).ToArray()
+            : [];
     }
 
     public async ValueTask<Result> GetAsync(HttpContext ctx)
     {
-        // Key: one char per gated primitive, '1' = visible. Empty when nothing is gated.
+        // Key: one char per filtered primitive, '1' = visible. Empty when nothing is gated, or gated ones are shown.
         char[] key = new char[_gated.Length];
         for (int i = 0; i < _gated.Length; i++)
         {
@@ -83,7 +87,7 @@ internal sealed class McpDocsCatalog
         bool[] visible = new bool[_items.Length];
         for (int i = 0; i < _items.Length; i++)
         {
-            visible[i] = !_items[i].Gated;
+            visible[i] = !_items[i].Gated || _docs.GatedPrimitives == McpDocsGatedPrimitives.Show;
         }
 
         for (int i = 0; i < _gated.Length; i++)
@@ -135,6 +139,7 @@ internal sealed class McpDocsCatalog
             w.WriteStartObject("docs");
             w.WriteBoolean("showMeta", _docs.ShowMeta);
             w.WriteBoolean("installLinks", _docs.InstallLinks);
+            w.WriteBoolean("filtersGated", _docs.GatedPrimitives == McpDocsGatedPrimitives.Hide);
             WriteString(w, "title", _docs.Title ?? info?.Title ?? serverName);
             WriteString(w, "description", _docs.Description);
             WriteString(w, "mcpEndpoint", _endpoint);

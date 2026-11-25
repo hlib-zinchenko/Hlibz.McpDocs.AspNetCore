@@ -61,7 +61,10 @@ internal static class McpDocsEndpointDiscovery
             && !routes.Where(e => IsUnder(e, docsBasePath)).Any(e => e.Metadata.GetMetadata<IAuthorizeData>() is not null))
         {
             warnings.Add($"The MCP endpoint requires authorization but the docs page at '{docsBasePath}' does not. " +
-                         "Call .RequireAuthorization() on MapMcpDocs, or accept that the page is public ([Authorize] primitives are still filtered per viewer).");
+                         "Call .RequireAuthorization() on MapMcpDocs, or accept that the page is public" +
+                         (docs.GatedPrimitives == McpDocsGatedPrimitives.Hide
+                             ? " ([Authorize] primitives are still filtered per viewer)."
+                             : " ([Authorize] primitives are listed too, with what they require; GatedPrimitives = Hide filters them per viewer)."));
         }
 
         return new(endpoint, errors, warnings);

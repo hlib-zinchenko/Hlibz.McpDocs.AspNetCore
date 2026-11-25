@@ -27,7 +27,8 @@ public class CatalogTests
     [InlineData("admin")]
     public async Task Catalog_matches_the_lists_the_mcp_endpoint_returns(string? roles)
     {
-        await using TestApp app = await TestApp.StartAsync();
+        // Hide makes the catalog per viewer, so each viewer's lists can be compared one to one.
+        await using TestApp app = await TestApp.StartAsync(o => o.GatedPrimitives = McpDocsGatedPrimitives.Hide);
         JsonNode catalog = await CatalogAsync(app, roles);
         await using McpClient client = await app.McpAsync(roles);
 
@@ -63,9 +64,21 @@ public class CatalogTests
     }
 
     [Fact]
-    public async Task Gated_tools_are_hidden_from_anonymous_viewers_and_marked_for_allowed_ones()
+    public async Task Gated_tools_are_listed_for_every_viewer_with_what_they_require_by_default()
     {
         await using TestApp app = await TestApp.StartAsync();
+
+        JsonNode anon = await CatalogAsync(app);
+        JsonNode entry = anon["tools"]!.AsArray().Single(e => (string?)e!["definition"]!["name"] == "delete_thing")!;
+        Assert.Contains("admin", entry["authorization"]!.ToJsonString());
+        Assert.False(anon["docs"]!["filtersGated"]!.GetValue<bool>());
+        Assert.True(JsonNode.DeepEquals(anon, await CatalogAsync(app, "admin")));
+    }
+
+    [Fact]
+    public async Task With_Hide_gated_tools_are_hidden_from_anonymous_viewers_and_marked_for_allowed_ones()
+    {
+        await using TestApp app = await TestApp.StartAsync(o => o.GatedPrimitives = McpDocsGatedPrimitives.Hide);
 
         JsonNode anon = await CatalogAsync(app);
         Assert.Null(Definition(anon, "tools", "delete_thing"));

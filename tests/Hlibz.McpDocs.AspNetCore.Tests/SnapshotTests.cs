@@ -6,7 +6,8 @@ using Xunit;
 namespace Hlibz.McpDocs.AspNetCore.Tests;
 
 /// <summary>
-/// Contract snapshots: the catalog an anonymous caller and an admin get, checked in under <c>Snapshots</c>.
+/// Contract snapshots: the catalog an anonymous caller and an admin get with <c>GatedPrimitives = Hide</c>, checked in
+/// under <c>Snapshots</c>.
 /// A renamed parameter or a changed schema fails here; run with <c>UPDATE_SNAPSHOTS=1</c> to accept the change.
 /// </summary>
 public class SnapshotTests
@@ -19,7 +20,7 @@ public class SnapshotTests
     private static async Task Verify(string name, ClaimsPrincipal? viewer)
     {
         await using TestApp app = await TestApp.StartAsync();
-        string actual = await McpDocsSnapshot.CreateAsync(app.App.Services, viewer: viewer);
+        string actual = await McpDocsSnapshot.CreateAsync(app.App.Services, o => o.GatedPrimitives = McpDocsGatedPrimitives.Hide, viewer: viewer);
         string path = Path.Combine(Dir(), name + ".json");
 
         if (Environment.GetEnvironmentVariable("UPDATE_SNAPSHOTS") == "1" || !File.Exists(path))
@@ -49,12 +50,21 @@ public class SnapshotTests
     }
 
     [Fact]
-    public async Task Admin_sees_more_than_anonymous()
+    public async Task With_Hide_admin_sees_more_than_anonymous()
+    {
+        await using TestApp app = await TestApp.StartAsync();
+        string anon = await McpDocsSnapshot.CreateAsync(app.App.Services, o => o.GatedPrimitives = McpDocsGatedPrimitives.Hide);
+        string admin = await McpDocsSnapshot.CreateAsync(app.App.Services, o => o.GatedPrimitives = McpDocsGatedPrimitives.Hide, viewer: Admin());
+        Assert.DoesNotContain("delete_thing", anon);
+        Assert.Contains("delete_thing", admin);
+    }
+
+    [Fact]
+    public async Task By_default_every_viewer_gets_the_same_contract_with_gated_primitives()
     {
         await using TestApp app = await TestApp.StartAsync();
         string anon = await McpDocsSnapshot.CreateAsync(app.App.Services);
-        string admin = await McpDocsSnapshot.CreateAsync(app.App.Services, viewer: Admin());
-        Assert.DoesNotContain("delete_thing", anon);
-        Assert.Contains("delete_thing", admin);
+        Assert.Contains("delete_thing", anon);
+        Assert.Equal(anon, await McpDocsSnapshot.CreateAsync(app.App.Services, viewer: Admin()));
     }
 }

@@ -19,8 +19,10 @@ namespace Hlibz.McpDocs.AspNetCore;
 public static class McpDocsSnapshot
 {
     /// <summary>
-    /// The catalog as indented JSON, in a stable order, as <paramref name="viewer"/> would see it
-    /// (anonymous when <see langword="null"/>; primitives gated with <c>[Authorize]</c> are left out unless the viewer passes).
+    /// The catalog as indented JSON, in a stable order, as <paramref name="viewer"/> would see it. By default every
+    /// primitive is listed, gated ones with what they require, whoever the viewer is; with
+    /// <see cref="McpDocsGatedPrimitives.Hide"/> primitives gated with <c>[Authorize]</c> are left out unless the
+    /// viewer (anonymous when <see langword="null"/>) passes.
     /// <para>
     /// By default only the contract: what clients get from the server (definitions, capabilities, instructions) and
     /// what a viewer needs to call it (authorization). How the page presents it is left out (the <c>docs</c> block,
@@ -29,7 +31,7 @@ public static class McpDocsSnapshot
     /// </summary>
     /// <param name="services">The app's services, e.g. <c>app.Services</c> or <c>factory.Services</c>.</param>
     /// <param name="configure">The same configuration passed to <c>MapMcpDocs</c>; only options that change the catalog matter.</param>
-    /// <param name="viewer">Who is looking, to snapshot a role's view.</param>
+    /// <param name="viewer">Who is looking, to snapshot a role's view. Matters only with <see cref="McpDocsGatedPrimitives.Hide"/>.</param>
     /// <param name="mcpEndpoint">What to record as the MCP endpoint (default <c>/mcp</c>) when <paramref name="includePresentation"/> is set; no routing is consulted.</param>
     /// <param name="includePresentation">Also include the presentation: the whole catalog the page is built from.</param>
     public static async Task<string> CreateAsync(
@@ -75,7 +77,10 @@ public static class McpDocsSnapshot
     /// </summary>
     /// <param name="services">The app's services, e.g. <c>app.Services</c> or <c>host.Services</c>.</param>
     /// <param name="configure">The same configuration passed to <c>MapMcpDocs</c>: title, description, theme, links.</param>
-    /// <param name="viewer">Who the page is for (anonymous when <see langword="null"/>). The file shows whatever this viewer may see to everyone who opens it.</param>
+    /// <param name="viewer">
+    /// Who the page is for (anonymous when <see langword="null"/>). Matters only with
+    /// <see cref="McpDocsGatedPrimitives.Hide"/>: the file then shows whatever this viewer may see to everyone who opens it.
+    /// </param>
     /// <param name="mcpEndpoint">
     /// Absolute <c>http(s)</c> URL of the MCP endpoint, e.g. <c>https://api.example.com/mcp</c>. Defaults to
     /// <see cref="McpDocsOptions.McpEndpoint"/>, which must then be absolute too: a file has no host to resolve a path against.
