@@ -1,0 +1,16 @@
+<Project>
+
+    <PropertyGroup>
+        <!-- The release tag overrides this with -p:Version, so it only matters for local packs and
+             branch builds. -->
+        <Version>0.2.0-preview.1</Version>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    </PropertyGroup>
+
+</Project>

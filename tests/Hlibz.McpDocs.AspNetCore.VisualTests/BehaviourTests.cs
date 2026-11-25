@@ -1,8 +1,11 @@
 using System.ComponentModel;
 using System.Text.Json;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
+
 using ModelContextProtocol.Server;
+
 using Xunit;
 
 namespace Hlibz.McpDocs.AspNetCore.VisualTests;
@@ -30,7 +33,7 @@ public class BehaviourTests : IAsyncLifetime
         `` ` ``<iframe src="javascript:window.__xss=1"></iframe>` *<a href="javascript:window.__xss=1">em link</a>*
         """;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _app = await VisualApp.StartAsync(
             server: s => s.WithTools([Hostile_tool(), AllOf_tool()]).WithTools<RecursiveTools>(),
@@ -39,7 +42,7 @@ public class BehaviourTests : IAsyncLifetime
         _browser = await _pw.Chromium.LaunchAsync();
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         await _browser.DisposeAsync();
         _pw.Dispose();
@@ -48,13 +51,13 @@ public class BehaviourTests : IAsyncLifetime
 
     private static McpServerTool Hostile_tool()
     {
-        var tool = McpServerTool.Create(([Description(Hostile)] string id) => id, new() { Name = "hostile", Description = Hostile });
+        McpServerTool tool = McpServerTool.Create(([Description(Hostile)] string id) => id, new() { Name = "hostile", Description = Hostile });
         return tool;
     }
 
     private static McpServerTool AllOf_tool()
     {
-        var tool = McpServerTool.Create((string sku) => sku, new() { Name = "restock", Description = "Restocks a product." });
+        McpServerTool tool = McpServerTool.Create((string sku) => sku, new() { Name = "restock", Description = "Restocks a product." });
         tool.ProtocolTool.InputSchema = JsonDocument.Parse("""
             {
               "type": "object",
@@ -86,8 +89,8 @@ public class BehaviourTests : IAsyncLifetime
 
     private async Task<IPage> Open(string hash)
     {
-        var page = await (await _browser.NewContextAsync()).NewPageAsync();
-        var errors = new List<string>();
+        IPage page = await (await _browser.NewContextAsync()).NewPageAsync();
+        List<string> errors = new List<string>();
         page.PageError += (_, e) => errors.Add(e);
         await page.GotoAsync($"{_app.BaseUrl}/mcp-docs/{hash}");
         await page.WaitForSelectorAsync("main .prop-name, main .md");
@@ -103,7 +106,7 @@ public class BehaviourTests : IAsyncLifetime
     [Fact]
     public async Task Markdown_renders_its_subset_and_nothing_else()
     {
-        var page = await Open("#tool/hostile");
+        IPage page = await Open("#tool/hostile");
         // Tool description, parameter description and the auth hint all go through the renderer.
         Assert.True(await Eval<int>(page, "document.querySelectorAll('main .md').length") >= 2);
 
@@ -125,12 +128,12 @@ public class BehaviourTests : IAsyncLifetime
     [Fact]
     public async Task AllOf_parts_are_merged_into_one_object()
     {
-        var page = await Open("#tool/restock");
-        var names = await Eval<string[]>(page, In("tool/restock", ".l .prop-name") + ".map(e => e.textContent)");
+        IPage page = await Open("#tool/restock");
+        string[] names = await Eval<string[]>(page, In("tool/restock", ".l .prop-name") + ".map(e => e.textContent)");
         Assert.Equal(["item", "sku", "quantity", "next"], names);
         Assert.Equal("required", await Eval<string>(page, In("tool/restock", ".prop") + ".find(p => p.querySelector('.prop-name').textContent === 'sku').querySelector('.req')?.textContent ?? ''"));
         Assert.Equal(["↻ recursive: Item"], await Eval<string[]>(page, In("tool/restock", ".chip.recursive") + ".map(e => e.textContent)"));
-        var request = await Eval<string>(page, In("tool/restock", ".r pre") + "[0].textContent");
+        string request = await Eval<string>(page, In("tool/restock", ".r pre") + "[0].textContent");
         Assert.Contains("\"sku\": \"string\"", request);
         Assert.Contains("\"quantity\": 0", request);
     }
@@ -138,10 +141,10 @@ public class BehaviourTests : IAsyncLifetime
     [Fact]
     public async Task Recursion_chips_say_what_they_repeat()
     {
-        var page = await Open("#tool/save_tree");
+        IPage page = await Open("#tool/save_tree");
         // The SDK refers back by field pointer (#/properties/tree/properties/root/properties/children), so the chip names
         // the field the type first appeared as, not the field that repeats it.
-        var chips = await Eval<string[]>(page, In("tool/save_tree", ".chip.recursive") + ".map(e => e.textContent)");
+        string[] chips = await Eval<string[]>(page, In("tool/save_tree", ".chip.recursive") + ".map(e => e.textContent)");
         Assert.Equal(["↻ recursive: same as tree.root.children[]", "↻ recursive: same as tree.root.children[].parent"], chips.Distinct().Order());
         Assert.Equal(6, chips.Length);
         // { "$ref": …, "items": {} }: the empty sibling must not hide the items the ref points to.

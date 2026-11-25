@@ -23,12 +23,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # The library and its tests target net8.0; the sample app targets net10.0.
+      # The SDK global.json pins (it builds net11.0), plus the .NET 10 runtime the net10.0 tests run on.
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
-          dotnet-version: |
-            8.0.x
-            10.0.x
+          global-json-file: global.json
+          dotnet-version: 10.0.x
 
       - name: Restore
         run: dotnet restore
@@ -36,17 +35,18 @@ jobs:
       - name: Build
         run: dotnet build --no-restore --configuration Release
 
+      # Microsoft Testing Platform (test.runner in global.json) needs --project per suite.
       - name: Test
-        run: dotnet test tests/Hlibz.McpDocs.AspNetCore.Tests.csproj --no-build --configuration Release
+        run: dotnet test --project tests/Hlibz.McpDocs.AspNetCore.Tests --no-build --configuration Release
 
       # app.js in a real browser, checked through the DOM: the Markdown renderer (the page's XSS boundary) and
       # schema rendering. The screenshot tests in the same project are left out: their baselines are per OS and
       # only the macOS ones are checked in.
       - name: Install Chromium
-        run: pwsh tests/Visual/bin/Release/net8.0/playwright.ps1 install --with-deps chromium
+        run: pwsh tests/Hlibz.McpDocs.AspNetCore.VisualTests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
 
       - name: Test the page in a browser
-        run: dotnet test tests/Visual/Hlibz.McpDocs.AspNetCore.VisualTests.csproj --no-build --configuration Release --filter Category=Behaviour
+        run: dotnet test --project tests/Hlibz.McpDocs.AspNetCore.VisualTests --no-build --configuration Release --filter-trait "Category=Behaviour"
 
       - name: Pack
         run: dotnet pack src/Hlibz.McpDocs.AspNetCore --no-build --configuration Release --output ./artifacts

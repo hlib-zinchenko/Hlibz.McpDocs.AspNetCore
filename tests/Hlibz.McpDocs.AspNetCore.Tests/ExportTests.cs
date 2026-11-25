@@ -1,9 +1,12 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
-using ModelContextProtocol.Server;
 using System.ComponentModel;
 using System.Net;
 using System.Text.Json.Nodes;
+
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
+
+using ModelContextProtocol.Server;
+
 using Xunit;
 
 namespace Hlibz.McpDocs.AspNetCore.Tests;
@@ -13,9 +16,9 @@ public class ExportTests
     [Fact]
     public async Task Markdown_lists_the_catalog_and_hides_what_the_viewer_may_not_see()
     {
-        await using var app = await TestApp.StartAsync();
-        var anon = await app.Client().GetStringAsync("/mcp-docs/catalog.md");
-        var admin = await app.Client("admin").GetStringAsync("/mcp-docs/catalog.md");
+        await using TestApp app = await TestApp.StartAsync();
+        string anon = await app.Client().GetStringAsync("/mcp-docs/catalog.md", TestContext.Current.CancellationToken);
+        string admin = await app.Client("admin").GetStringAsync("/mcp-docs/catalog.md", TestContext.Current.CancellationToken);
 
         Assert.StartsWith("# Test Server", anon);
         Assert.Contains("### get_thing", anon);
@@ -32,8 +35,8 @@ public class ExportTests
     [Fact]
     public async Task Markdown_describes_a_result_that_is_not_an_object()
     {
-        await using var app = await TestApp.StartAsync();
-        var md = await app.Client().GetStringAsync("/mcp-docs/catalog.md");
+        await using TestApp app = await TestApp.StartAsync();
+        string md = await app.Client().GetStringAsync("/mcp-docs/catalog.md", TestContext.Current.CancellationToken);
 
         Assert.Contains("Type: `array of object`. Clients on protocol 2025-11-25 or older receive it wrapped as `{ \"result\": ... }`.", md);
         Assert.Contains("Each item:", md);
@@ -58,9 +61,9 @@ public class ExportTests
     [Fact]
     public async Task Markdown_lists_nested_fields_and_stops_at_recursion()
     {
-        await using var app = await TestApp.StartAsync(server: s => s.WithTools<NestedTools>());
-        var md = await app.Client().GetStringAsync("/mcp-docs/catalog.md");
-        var lines = md.Split('\n');
+        await using TestApp app = await TestApp.StartAsync(server: s => s.WithTools<NestedTools>());
+        string md = await app.Client().GetStringAsync("/mcp-docs/catalog.md", TestContext.Current.CancellationToken);
+        string[] lines = md.Split('\n');
         string Row(string name) => Assert.Single(lines, l => l.StartsWith("| `" + name + "` |"));
 
         Assert.Contains("| object | yes | The tree |", Row("category"));
@@ -81,7 +84,7 @@ public class ExportTests
     /// <summary>A tool whose input schema is hand-written: allOf as code generators and other SDKs emit it.</summary>
     internal static McpServerTool AllOfTool()
     {
-        var tool = McpServerTool.Create((string sku) => sku, new() { Name = "restock", Description = "Restocks a product." });
+        McpServerTool tool = McpServerTool.Create((string sku) => sku, new() { Name = "restock", Description = "Restocks a product." });
         tool.ProtocolTool.InputSchema = System.Text.Json.JsonDocument.Parse("""
             {
               "type": "object",
@@ -104,9 +107,9 @@ public class ExportTests
     [Fact]
     public async Task Markdown_merges_allOf_and_names_a_recursive_type()
     {
-        await using var app = await TestApp.StartAsync(server: s => s.WithTools([AllOfTool()]));
-        var md = await app.Client().GetStringAsync("/mcp-docs/catalog.md");
-        var lines = md.Split('\n');
+        await using TestApp app = await TestApp.StartAsync(server: s => s.WithTools([AllOfTool()]));
+        string md = await app.Client().GetStringAsync("/mcp-docs/catalog.md", TestContext.Current.CancellationToken);
+        string[] lines = md.Split('\n');
         string Row(string name) => Assert.Single(lines, l => l.StartsWith("| `" + name + "` |"));
 
         Assert.Contains("| string | yes | Product SKU |", Row("item.sku"));
@@ -118,10 +121,10 @@ public class ExportTests
     [Fact]
     public async Task Llms_txt_is_an_index_that_links_to_the_markdown()
     {
-        await using var app = await TestApp.StartAsync();
-        var res = await app.Client().GetAsync("/mcp-docs/llms.txt");
+        await using TestApp app = await TestApp.StartAsync();
+        HttpResponseMessage res = await app.Client().GetAsync("/mcp-docs/llms.txt", TestContext.Current.CancellationToken);
         Assert.Equal("text/plain", res.Content.Headers.ContentType!.MediaType);
-        var text = await res.Content.ReadAsStringAsync();
+        string text = await res.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.StartsWith("# Test Server", text);
         Assert.Contains("(http://localhost/mcp-docs/catalog.md)", text);
         Assert.Contains("- `get_thing`: Gets a thing.", text);
@@ -131,8 +134,8 @@ public class ExportTests
     [Fact]
     public async Task Exports_follow_the_PathBase()
     {
-        await using var app = await TestApp.StartAsync(beforeDocs: b => b.UsePathBase("/api"));
-        var text = await app.Client().GetStringAsync("/api/mcp-docs/llms.txt");
+        await using TestApp app = await TestApp.StartAsync(beforeDocs: b => b.UsePathBase("/api"));
+        string text = await app.Client().GetStringAsync("/api/mcp-docs/llms.txt", TestContext.Current.CancellationToken);
         Assert.Contains("(http://localhost/api/mcp-docs/catalog.md)", text);
         Assert.Contains("at http://localhost/api/mcp.", text);
     }
@@ -140,15 +143,15 @@ public class ExportTests
     [Fact]
     public async Task Server_json_is_only_served_with_a_registry_name()
     {
-        await using var without = await TestApp.StartAsync();
-        Assert.Equal(HttpStatusCode.NotFound, (await without.Client().GetAsync("/mcp-docs/server.json")).StatusCode);
+        await using TestApp without = await TestApp.StartAsync();
+        Assert.Equal(HttpStatusCode.NotFound, (await without.Client().GetAsync("/mcp-docs/server.json", TestContext.Current.CancellationToken)).StatusCode);
 
-        await using var app = await TestApp.StartAsync(o => { o.RegistryName = "io.github.acme/test-server"; o.AuthHeader = "Authorization"; o.Description = "Things."; });
-        var json = JsonNode.Parse(await app.Client().GetStringAsync("/mcp-docs/server.json"))!;
+        await using TestApp app = await TestApp.StartAsync(o => { o.RegistryName = "io.github.acme/test-server"; o.AuthHeader = "Authorization"; o.Description = "Things."; });
+        JsonNode json = JsonNode.Parse(await app.Client().GetStringAsync("/mcp-docs/server.json", TestContext.Current.CancellationToken))!;
         Assert.Equal("io.github.acme/test-server", (string?)json["name"]);
         Assert.Equal("Things.", (string?)json["description"]);
         Assert.Equal("1.0.0", (string?)json["version"]);
-        var remote = json["remotes"]![0]!;
+        JsonNode remote = json["remotes"]![0]!;
         Assert.Equal("streamable-http", (string?)remote["type"]);
         Assert.Equal("http://localhost/mcp", (string?)remote["url"]);
         Assert.Equal("Authorization", (string?)remote["headers"]![0]!["name"]);
@@ -164,10 +167,13 @@ public class ExportTests
     [Fact]
     public async Task Exports_inherit_the_group_authorization()
     {
-        await using var app = await TestApp.StartAsync(requireAuth: true);
-        foreach (var path in new[] { "catalog.md", "llms.txt" })
-            Assert.Equal(HttpStatusCode.Unauthorized, (await app.Client().GetAsync("/mcp-docs/" + path)).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await app.Client("user").GetAsync("/mcp-docs/catalog.md")).StatusCode);
+        await using TestApp app = await TestApp.StartAsync(requireAuth: true);
+        foreach (string? path in new[] { "catalog.md", "llms.txt" })
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, (await app.Client().GetAsync("/mcp-docs/" + path, TestContext.Current.CancellationToken)).StatusCode);
+        }
+
+        Assert.Equal(HttpStatusCode.OK, (await app.Client("user").GetAsync("/mcp-docs/catalog.md", TestContext.Current.CancellationToken)).StatusCode);
     }
 }
 
@@ -178,8 +184,8 @@ public class InstallLinkTests
     [InlineData(false)]
     public async Task Install_links_can_be_turned_off(bool on)
     {
-        await using var app = await TestApp.StartAsync(o => o.InstallLinks = on);
-        var catalog = JsonNode.Parse(await app.Client().GetStringAsync("/mcp-docs/catalog.json"))!;
+        await using TestApp app = await TestApp.StartAsync(o => o.InstallLinks = on);
+        JsonNode catalog = JsonNode.Parse(await app.Client().GetStringAsync("/mcp-docs/catalog.json", TestContext.Current.CancellationToken))!;
         Assert.Equal(on, (bool)catalog["docs"]!["installLinks"]!);
     }
 }

@@ -1,9 +1,11 @@
 using System.ComponentModel;
 using System.Text.Json.Serialization;
+
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+
 using ModelContextProtocol.Server;
 
 namespace Hlibz.McpDocs.AspNetCore.VisualTests;
@@ -16,14 +18,14 @@ internal sealed class VisualApp : IAsyncDisposable
 
     public static async Task<VisualApp> StartAsync(Action<IMcpServerBuilder>? server = null, Action<McpDocsOptions>? docs = null)
     {
-        var builder = WebApplication.CreateBuilder();
+        WebApplicationBuilder builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
-        var mcp = builder.Services.AddMcpServer(o => o.ServerInfo = new() { Name = "visual-server", Title = "Visual Server", Version = "1.0.0" })
+        IMcpServerBuilder mcp = builder.Services.AddMcpServer(o => o.ServerInfo = new() { Name = "visual-server", Title = "Visual Server", Version = "1.0.0" })
             .WithHttpTransport().WithTools<Tools>().WithPrompts<Prompts>().WithResources<Resources>();
         server?.Invoke(mcp);
 
-        var app = builder.Build();
+        WebApplication app = builder.Build();
         app.MapMcp("/mcp");
         app.MapMcpDocs("/mcp-docs", o => { o.AddToolbarItem("GitHub", "https://example.com"); docs?.Invoke(o); });
         await app.StartAsync();

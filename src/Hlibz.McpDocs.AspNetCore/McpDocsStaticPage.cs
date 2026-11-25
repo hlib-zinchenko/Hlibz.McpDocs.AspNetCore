@@ -24,34 +24,57 @@ internal static partial class McpDocsStaticPage
     /// </summary>
     public static void Prepare(JsonObject catalog, string? endpoint, IReadOnlyList<string>? stdioCommand, string? origin)
     {
-        var d = catalog["docs"]!.AsObject();
+        JsonObject d = catalog["docs"]!.AsObject();
         d["static"] = true;
-        if (endpoint is null) d.Remove("mcpEndpoint"); else d["mcpEndpoint"] = endpoint;
+        if (endpoint is null)
+        {
+            d.Remove("mcpEndpoint");
+        }
+        else
+        {
+            d["mcpEndpoint"] = endpoint;
+        }
+
         if (stdioCommand is not null)
+        {
             d["stdio"] = new JsonObject
             {
                 ["command"] = stdioCommand[0],
                 ["args"] = new JsonArray(stdioCommand.Skip(1).Select(a => (JsonNode?)JsonValue.Create(a)).ToArray()),
             };
+        }
 
         // Favicon: a path into the app ("/x", already resolved from "~/x") needs the origin; without one the
         // server icon is used instead. Only https: and data: load under the file's CSP anyway.
         if ((string?)d["favicon"] is { } fav && fav.StartsWith('/'))
         {
-            if (origin is null) d.Remove("favicon"); else d["favicon"] = origin + fav;
+            if (origin is null)
+            {
+                d.Remove("favicon");
+            }
+            else
+            {
+                d["favicon"] = origin + fav;
+            }
         }
 
         // Toolbar links that are site paths would resolve against wherever the file is opened.
         if (origin is not null && d["links"] is JsonArray links)
-            foreach (var link in links.OfType<JsonObject>())
+        {
+            foreach (JsonObject link in links.OfType<JsonObject>())
+            {
                 if ((string?)link["url"] is { } url && url.StartsWith('/') && !url.StartsWith("//", StringComparison.Ordinal))
+                {
                     link["url"] = origin + url;
+                }
+            }
+        }
     }
 
     /// <summary>The page for the viewer of a served request, with the endpoint and links made absolute.</summary>
     public static string FromRequest(McpDocsExports.Source source, McpDocsOptions docs, McpDocsAssets assets, McpDocsColorMode mode)
     {
-        var catalog = source.Catalog.AsObject(); // parsed for this render only
+        JsonObject catalog = source.Catalog.AsObject(); // parsed for this render only
         Prepare(catalog, McpDocsExports.Endpoint(source), null, source.Origin);
         return Render(docs, assets, catalog, mode);
     }
@@ -59,27 +82,27 @@ internal static partial class McpDocsStaticPage
     // mode: colour mode for first-time viewers of the file; defaults to McpDocsOptions.DefaultColorMode.
     public static string Render(McpDocsOptions docs, McpDocsAssets assets, JsonNode catalog, McpDocsColorMode? mode = null)
     {
-        var title = (string?)catalog["docs"]?["title"] ?? "MCP server";
+        string title = (string?)catalog["docs"]?["title"] ?? "MCP server";
 
         // Same order of precedence as the served page: built-in styles, then the theme from the options.
-        var css = Css(assets.Text("app.css")! + "\n" + (assets.Text("theme.css") ?? ""));
-        var print = assets.Text("print.css") is { } p ? Css(p) : null;
-        var js = Script(assets.Text("app.js")!);
+        string css = Css(assets.Text("app.css")! + "\n" + (assets.Text("theme.css") ?? ""));
+        string? print = assets.Text("print.css") is { } p ? Css(p) : null;
+        string js = Script(assets.Text("app.js")!);
 
         // JSON only has '<' inside strings, where < means the same; no "</script" or "<!--" can survive.
-        var json = catalog.ToJsonString().Replace("<", "\\u003c", StringComparison.Ordinal);
+        string json = catalog.ToJsonString().Replace("<", "\\u003c", StringComparison.Ordinal);
 
-        var styleHashes = print is null ? Hash(css) : Hash(css) + " " + Hash(print);
-        var csp = $"default-src 'none'; script-src {Hash(js)}; style-src {styleHashes}; img-src data: https:; base-uri 'none'; form-action 'none'";
+        string styleHashes = print is null ? Hash(css) : Hash(css) + " " + Hash(print);
+        string csp = $"default-src 'none'; script-src {Hash(js)}; style-src {styleHashes}; img-src data: https:; base-uri 'none'; form-action 'none'";
 
-        var theme = (mode ?? docs.DefaultColorMode) switch
+        string theme = (mode ?? docs.DefaultColorMode) switch
         {
             McpDocsColorMode.Light => " data-theme=\"light\"",
             McpDocsColorMode.Dark => " data-theme=\"dark\"",
             _ => "",
         };
 
-        var sb = new StringBuilder(css.Length + js.Length + json.Length + 1024);
+        StringBuilder sb = new StringBuilder(css.Length + js.Length + json.Length + 1024);
         sb.Append("<!doctype html>\n")
           .Append("<html lang=\"en\" data-static").Append(theme).Append(">\n")
           .Append("<head>\n")
@@ -90,7 +113,11 @@ internal static partial class McpDocsStaticPage
           .Append("<meta name=\"referrer\" content=\"no-referrer\">\n")
           .Append("<title>").Append(WebUtility.HtmlEncode(title)).Append("</title>\n")
           .Append("<style>").Append(css).Append("</style>\n");
-        if (print is not null) sb.Append("<style media=\"print\">").Append(print).Append("</style>\n");
+        if (print is not null)
+        {
+            sb.Append("<style media=\"print\">").Append(print).Append("</style>\n");
+        }
+
         sb.Append("<script>").Append(js).Append("</script>\n")
           .Append("</head>\n")
           .Append("<body>\n")

@@ -20,16 +20,17 @@ jobs:
 
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
-          dotnet-version: |
-            8.0.x
-            10.0.x
+          global-json-file: global.json
+          dotnet-version: 10.0.x
 
-      # No version: the newest stable release. The sample keeps its own pin and isn't built here.
+      # The newest stable release, as the central version the tests run. The library's own range
+      # (VersionOverride in its csproj) stays: the tests' direct reference lifts it.
       - name: Use the newest SDK
         run: |
-          dotnet add src/Hlibz.McpDocs.AspNetCore package ModelContextProtocol.AspNetCore
-          dotnet add tests/Hlibz.McpDocs.AspNetCore.Tests.csproj package ModelContextProtocol.AspNetCore
-          grep -h "ModelContextProtocol.AspNetCore" src/Hlibz.McpDocs.AspNetCore/*.csproj tests/*.csproj
+          latest=$(curl -fsS https://api.nuget.org/v3-flatcontainer/modelcontextprotocol.aspnetcore/index.json \
+            | jq -r '[.versions[] | select(test("-") | not)] | last')
+          sed -i -E "s|(Include=\"ModelContextProtocol.AspNetCore\" Version=\")[^\"]+|\1$latest|" Directory.Packages.props
+          grep "ModelContextProtocol.AspNetCore" Directory.Packages.props
 
       - name: Test
-        run: dotnet test tests/Hlibz.McpDocs.AspNetCore.Tests.csproj --configuration Release
+        run: dotnet test --project tests/Hlibz.McpDocs.AspNetCore.Tests --configuration Release

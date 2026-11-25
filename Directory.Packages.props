@@ -1,0 +1,22 @@
+<Project>
+    <PropertyGroup>
+        <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
+        <PackageVersion Include="Microsoft.Playwright" Version="1.65.1" />
+        <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="11.0.100" />
+        <!-- What the tests and the sample run. The library itself depends on the range in its
+             csproj (VersionOverride), the minimum consumers need. -->
+        <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="2.4.0" />
+        <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
+        <PackageVersion Include="xunit.v3" Version="4.0.3" />
+    </ItemGroup>
+    <!-- TestHost ships with ASP.NET Core: one version per target framework. -->
+    <ItemGroup Condition="'$(TargetFramework)' == 'net11.0'">
+        <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="11.0.0" />
+    </ItemGroup>
+    <ItemGroup Condition="'$(TargetFramework)' != 'net11.0'">
+        <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="10.0.15" />
+    </ItemGroup>
+</Project>

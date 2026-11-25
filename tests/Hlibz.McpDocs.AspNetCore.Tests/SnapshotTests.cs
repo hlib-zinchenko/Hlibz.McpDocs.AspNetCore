@@ -1,11 +1,12 @@
 using System.Runtime.CompilerServices;
 using System.Security.Claims;
+
 using Xunit;
 
 namespace Hlibz.McpDocs.AspNetCore.Tests;
 
 /// <summary>
-/// Contract snapshots: the catalog an anonymous caller and an admin get, checked in under <c>tests/Snapshots</c>.
+/// Contract snapshots: the catalog an anonymous caller and an admin get, checked in under <c>Snapshots</c>.
 /// A renamed parameter or a changed schema fails here; run with <c>UPDATE_SNAPSHOTS=1</c> to accept the change.
 /// </summary>
 public class SnapshotTests
@@ -17,9 +18,9 @@ public class SnapshotTests
 
     private static async Task Verify(string name, ClaimsPrincipal? viewer)
     {
-        await using var app = await TestApp.StartAsync();
-        var actual = await McpDocsSnapshot.CreateAsync(app.App.Services, viewer: viewer);
-        var path = Path.Combine(Dir(), name + ".json");
+        await using TestApp app = await TestApp.StartAsync();
+        string actual = await McpDocsSnapshot.CreateAsync(app.App.Services, viewer: viewer);
+        string path = Path.Combine(Dir(), name + ".json");
 
         if (Environment.GetEnvironmentVariable("UPDATE_SNAPSHOTS") == "1" || !File.Exists(path))
         {
@@ -37,11 +38,11 @@ public class SnapshotTests
     [Fact]
     public async Task Presentation_is_left_out_unless_asked_for()
     {
-        await using var app = await TestApp.StartAsync();
+        await using TestApp app = await TestApp.StartAsync();
         void Docs(McpDocsOptions o) { o.Title = "Renamed"; o.AddToolbarItem("Status", "https://status.example"); o.ToolGroup = _ => "Things"; }
         Assert.Equal(await McpDocsSnapshot.CreateAsync(app.App.Services), await McpDocsSnapshot.CreateAsync(app.App.Services, Docs));
 
-        var full = await McpDocsSnapshot.CreateAsync(app.App.Services, Docs, includePresentation: true);
+        string full = await McpDocsSnapshot.CreateAsync(app.App.Services, Docs, includePresentation: true);
         Assert.Contains("\"title\": \"Renamed\"", full);
         Assert.Contains("\"group\": \"Things\"", full);
         Assert.Contains("\"issues\"", full);
@@ -50,9 +51,9 @@ public class SnapshotTests
     [Fact]
     public async Task Admin_sees_more_than_anonymous()
     {
-        await using var app = await TestApp.StartAsync();
-        var anon = await McpDocsSnapshot.CreateAsync(app.App.Services);
-        var admin = await McpDocsSnapshot.CreateAsync(app.App.Services, viewer: Admin());
+        await using TestApp app = await TestApp.StartAsync();
+        string anon = await McpDocsSnapshot.CreateAsync(app.App.Services);
+        string admin = await McpDocsSnapshot.CreateAsync(app.App.Services, viewer: Admin());
         Assert.DoesNotContain("delete_thing", anon);
         Assert.Contains("delete_thing", admin);
     }

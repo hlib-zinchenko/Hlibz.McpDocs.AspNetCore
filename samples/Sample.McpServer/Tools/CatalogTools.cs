@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Text.Json.Serialization;
+
 using Hlibz.McpDocs.AspNetCore;
+
 using ModelContextProtocol.Server;
 
 namespace Sample.McpServer.Tools;

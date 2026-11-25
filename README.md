@@ -49,13 +49,13 @@ I'll do my best to keep the project moving.
 ## Install
 
 ```bash
-dotnet add package Hlibz.McpDocs.AspNetCore
+dotnet add package Hlibz.McpDocs.AspNetCore --prerelease
 ```
 
 With central package management, set the version in `Directory.Packages.props`:
 
 ```xml
-<PackageVersion Include="Hlibz.McpDocs.AspNetCore" Version="0.1.3" />
+<PackageVersion Include="Hlibz.McpDocs.AspNetCore" Version="0.2.0-preview.1" />
 ```
 
 ## Quick start
@@ -210,7 +210,7 @@ Mostly not a "never": this is where the project stands today, and much of it may
 `McpDocsSnapshot.CreateAsync(app.Services, viewer: …)` returns the catalog as stable, indented JSON
 without an HTTP request. Compare it to a checked-in file (or pass it to Verify) and a renamed
 parameter, a changed output schema or a dropped `[Authorize]` fails the build, the MCP equivalent of
-an OpenAPI diff. [`tests/SnapshotTests.cs`](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/blob/main/tests/SnapshotTests.cs) does this for an
+an OpenAPI diff. [`SnapshotTests.cs`](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/blob/main/tests/Hlibz.McpDocs.AspNetCore.Tests/SnapshotTests.cs) does this for an
 anonymous and an admin viewer; `UPDATE_SNAPSHOTS=1 dotnet test` accepts a change.
 
 The snapshot is the contract only: definitions, capabilities, instructions and authorization. How the page
@@ -219,7 +219,7 @@ nothing. Pass `includePresentation: true` for the whole catalog the page is buil
 
 ## Compatibility
 
-- Targets `net8.0`, which also runs in net9 and net10 apps. CI builds and tests on the .NET 8 runtime.
+- Targets `net10.0` and `net11.0`. CI builds and tests on both runtimes.
 - Built against `ModelContextProtocol.AspNetCore` 2.3.1 and accepts any 2.x. Authorization mirrors that
   version's `AddAuthorizationFilters()`; a test compares what the page shows each viewer with what the
   server lists them, and a weekly CI job runs it against the newest stable SDK. 3.0 and later are outside
@@ -239,22 +239,22 @@ change when you upgrade; review the diff, then accept it.
 
 ```bash
 dotnet build
-dotnet test tests/Hlibz.McpDocs.AspNetCore.Tests.csproj
+dotnet test --project tests/Hlibz.McpDocs.AspNetCore.Tests
 ```
 
-`tests/` runs a real server on `TestServer`: it asserts that `catalog.json` equals what an MCP client
+`tests/Hlibz.McpDocs.AspNetCore.Tests` runs a real server on `TestServer`: it asserts that `catalog.json` equals what an MCP client
 gets from `tools/list`, `prompts/list`, `resources/list` and `resources/templates/list` (anonymous
 and signed in), the status codes anonymous callers get on protected docs, the CSP rules, option
 validation, `PathBase` handling, endpoint discovery and the exports.
 
-`tests/Visual` screenshots the page with Playwright (light, dark, mobile, recursive and polymorphic
-schemas) against baselines in `tests/Visual/Baselines/<os>/`. Font rendering differs per OS, so only
+`tests/Hlibz.McpDocs.AspNetCore.VisualTests` screenshots the page with Playwright (light, dark, mobile, recursive and polymorphic
+schemas) against baselines in its `Baselines/<os>/`. Font rendering differs per OS, so only
 the macOS baselines are checked in and CI doesn't run it. Install Chromium once, then run:
 
 ```bash
-dotnet build tests/Visual
-tests/Visual/bin/Debug/net8.0/.playwright/node/darwin-arm64/node tests/Visual/bin/Debug/net8.0/.playwright/package/cli.js install chromium
-dotnet test tests/Visual
+dotnet build tests/Hlibz.McpDocs.AspNetCore.VisualTests
+tests/Hlibz.McpDocs.AspNetCore.VisualTests/bin/Debug/net10.0/.playwright/node/darwin-arm64/node tests/Hlibz.McpDocs.AspNetCore.VisualTests/bin/Debug/net10.0/.playwright/package/cli.js install chromium
+dotnet test --project tests/Hlibz.McpDocs.AspNetCore.VisualTests
 ```
 
 A missing baseline is written on first run; `UPDATE_SNAPSHOTS=1` accepts changes.

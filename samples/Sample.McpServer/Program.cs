@@ -1,11 +1,15 @@
 using System.Security.Claims;
+
 using Hlibz.McpDocs.AspNetCore;
+
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+
 using ModelContextProtocol.Server;
+
 using Sample.McpServer.Tools;
 
-var builder = WebApplication.CreateBuilder(args);
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 // Demo auth: a cookie set by /demo/sign-in. A real server would use JWT bearer / OAuth for MCP clients;
 // the docs page evaluates [Authorize] against whoever the browser is signed in as.
@@ -33,7 +37,7 @@ builder.Services
     .WithResourcesFromAssembly()
     .AddAuthorizationFilters(); // hides [Authorize]d primitives from tools/list etc. — the docs page applies the same rules
 
-var app = builder.Build();
+WebApplication app = builder.Build();
 
 app.MapMcp("/mcp");
 
@@ -67,7 +71,7 @@ if (app.Environment.IsDevelopment())
     // /demo/sign-in?roles=admin,finance → reload the docs page to see the gated primitives.
     app.MapGet("/demo/sign-in", async (HttpContext ctx, string? roles) =>
     {
-        var claims = new List<Claim> { new(ClaimTypes.Name, "demo") };
+        List<Claim> claims = new List<Claim> { new(ClaimTypes.Name, "demo") };
         claims.AddRange((roles ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(r => new Claim(ClaimTypes.Role, r)));
         await ctx.SignInAsync(new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme)));

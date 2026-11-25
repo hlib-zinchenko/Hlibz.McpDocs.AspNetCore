@@ -1,7 +1,9 @@
 using System.Net;
+
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+
 using Xunit;
 
 namespace Hlibz.McpDocs.AspNetCore.Tests;
@@ -11,32 +13,32 @@ public class PageTests
     [Fact]
     public async Task Page_is_served_with_a_strict_default_CSP()
     {
-        await using var app = await TestApp.StartAsync();
-        var res = await app.Client().GetAsync("/mcp-docs/");
+        await using TestApp app = await TestApp.StartAsync();
+        HttpResponseMessage res = await app.Client().GetAsync("/mcp-docs/", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
-        var csp = string.Join(";", res.Headers.GetValues("Content-Security-Policy"));
+        string csp = string.Join(";", res.Headers.GetValues("Content-Security-Policy"));
         Assert.Contains("script-src 'self'", csp);
         Assert.DoesNotContain("unsafe-inline", csp);
-        Assert.Contains("_assets/app.js", await res.Content.ReadAsStringAsync());
+        Assert.Contains("_assets/app.js", await res.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
     public async Task An_existing_CSP_is_kept()
     {
-        await using var app = await TestApp.StartAsync(beforeDocs: b => b.Use(async (ctx, next) =>
+        await using TestApp app = await TestApp.StartAsync(beforeDocs: b => b.Use(async (ctx, next) =>
         {
             ctx.Response.Headers.ContentSecurityPolicy = "default-src 'self'";
             await next();
         }));
-        var res = await app.Client().GetAsync("/mcp-docs/");
+        HttpResponseMessage res = await app.Client().GetAsync("/mcp-docs/", TestContext.Current.CancellationToken);
         Assert.Equal("default-src 'self'", Assert.Single(res.Headers.GetValues("Content-Security-Policy")));
     }
 
     [Fact]
     public async Task Path_without_trailing_slash_redirects()
     {
-        await using var app = await TestApp.StartAsync();
-        var res = await app.Client().GetAsync("/mcp-docs");
+        await using TestApp app = await TestApp.StartAsync();
+        HttpResponseMessage res = await app.Client().GetAsync("/mcp-docs", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Redirect, res.StatusCode);
         Assert.EndsWith("/mcp-docs/", res.Headers.Location!.ToString());
     }
@@ -44,27 +46,27 @@ public class PageTests
     [Fact]
     public async Task Default_color_mode_is_set_on_the_html_element()
     {
-        await using var app = await TestApp.StartAsync(o => o.DefaultColorMode = McpDocsColorMode.Dark);
-        Assert.Contains("<html lang=\"en\" data-theme=\"dark\">", await app.Client().GetStringAsync("/mcp-docs/"));
-        await using var plain = await TestApp.StartAsync();
-        Assert.Contains("<html lang=\"en\">", await plain.Client().GetStringAsync("/mcp-docs/"));
+        await using TestApp app = await TestApp.StartAsync(o => o.DefaultColorMode = McpDocsColorMode.Dark);
+        Assert.Contains("<html lang=\"en\" data-theme=\"dark\">", await app.Client().GetStringAsync("/mcp-docs/", TestContext.Current.CancellationToken));
+        await using TestApp plain = await TestApp.StartAsync();
+        Assert.Contains("<html lang=\"en\">", await plain.Client().GetStringAsync("/mcp-docs/", TestContext.Current.CancellationToken));
     }
 
     [Fact]
     public async Task Theme_css_carries_the_options_and_is_linked_only_when_needed()
     {
-        await using var plain = await TestApp.StartAsync();
-        Assert.DoesNotContain("theme.css", await plain.Client().GetStringAsync("/mcp-docs/"));
+        await using TestApp plain = await TestApp.StartAsync();
+        Assert.DoesNotContain("theme.css", await plain.Client().GetStringAsync("/mcp-docs/", TestContext.Current.CancellationToken));
 
-        await using var app = await TestApp.StartAsync(o =>
+        await using TestApp app = await TestApp.StartAsync(o =>
         {
             o.PrimaryColor = "#0a7f5a";
             o.DarkPreset = McpDocsDarkPreset.Nord;
             o.AdditionalCss = "h1 { color: red; }";
         });
-        var html = await app.Client().GetStringAsync("/mcp-docs/");
-        var href = System.Text.RegularExpressions.Regex.Match(html, "href=\"(_assets/theme.css[^\"]*)\"").Groups[1].Value;
-        var css = await app.Client().GetStringAsync("/mcp-docs/" + href);
+        string html = await app.Client().GetStringAsync("/mcp-docs/", TestContext.Current.CancellationToken);
+        string href = System.Text.RegularExpressions.Regex.Match(html, "href=\"(_assets/theme.css[^\"]*)\"").Groups[1].Value;
+        string css = await app.Client().GetStringAsync("/mcp-docs/" + href, TestContext.Current.CancellationToken);
         Assert.Contains("--accent:#0a7f5a", css);
         Assert.Contains("#2e3440", css);
         Assert.Contains("h1 { color: red; }", css);
@@ -75,7 +77,7 @@ public class PageTests
     [Fact]
     public void Dark_accent_and_panel_accent_use_the_dark_mode_colour_when_one_is_given()
     {
-        var css = McpDocsTheme.Build(new McpDocsOptions { PrimaryColor = "#0a7f5a", DarkModePrimaryColor = "#5fd3a6" });
+        string css = McpDocsTheme.Build(new McpDocsOptions { PrimaryColor = "#0a7f5a", DarkModePrimaryColor = "#5fd3a6" });
         Assert.StartsWith(":root{--accent:#0a7f5a;", css);
         Assert.Contains("--panel-accent:#5fd3a6;}", css); // light mode; dark mode's is var(--accent) in app.css
         Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(css, "--accent:#5fd3a6;").Count); // system dark, toggled dark
@@ -85,7 +87,7 @@ public class PageTests
     [Fact]
     public void Dark_accent_is_the_brand_colour_lightened_when_no_dark_one_is_given()
     {
-        var css = McpDocsTheme.Build(new McpDocsOptions { PrimaryColor = "#4450c8" });
+        string css = McpDocsTheme.Build(new McpDocsOptions { PrimaryColor = "#4450c8" });
         const string mixed = "color-mix(in oklab,#4450c8 55%,white)";
         Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(css, System.Text.RegularExpressions.Regex.Escape("--accent:" + mixed + ";")).Count);
         Assert.DoesNotContain("--accent:#4450c8;--accent-soft:color-mix(in srgb,#4450c8 12%", css); // the raw colour is light mode only
@@ -94,10 +96,10 @@ public class PageTests
     [Fact]
     public async Task Print_styles_can_be_switched_off()
     {
-        await using var on = await TestApp.StartAsync();
-        Assert.Contains("media=\"print\"", await on.Client().GetStringAsync("/mcp-docs/"));
-        await using var off = await TestApp.StartAsync(o => o.PrintStyles = false);
-        Assert.DoesNotContain("print.css", await off.Client().GetStringAsync("/mcp-docs/"));
+        await using TestApp on = await TestApp.StartAsync();
+        Assert.Contains("media=\"print\"", await on.Client().GetStringAsync("/mcp-docs/", TestContext.Current.CancellationToken));
+        await using TestApp off = await TestApp.StartAsync(o => o.PrintStyles = false);
+        Assert.DoesNotContain("print.css", await off.Client().GetStringAsync("/mcp-docs/", TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -120,10 +122,10 @@ public class PageTests
     [Fact]
     public async Task Toolbar_links_and_favicon_resolve_against_PathBase_in_the_catalog()
     {
-        await using var app = await TestApp.StartAsync(
+        await using TestApp app = await TestApp.StartAsync(
             o => { o.AddToolbarItem("Status", "~/status", newTab: false); o.Favicon = "~/fav.ico"; },
             beforeDocs: b => b.UsePathBase("/app"));
-        var json = await app.Client().GetStringAsync("/app/mcp-docs/catalog.json");
+        string json = await app.Client().GetStringAsync("/app/mcp-docs/catalog.json", TestContext.Current.CancellationToken);
         Assert.Contains("\"url\":\"/app/status\"", json);
         Assert.Contains("\"favicon\":\"/app/fav.ico\"", json);
         Assert.Contains("\"mcpEndpoint\":\"/app/mcp\"", json);
@@ -132,10 +134,10 @@ public class PageTests
     [Fact]
     public async Task Assets_are_immutable_and_unknown_assets_404()
     {
-        await using var app = await TestApp.StartAsync();
-        var js = await app.Client().GetAsync("/mcp-docs/_assets/app.js");
+        await using TestApp app = await TestApp.StartAsync();
+        HttpResponseMessage js = await app.Client().GetAsync("/mcp-docs/_assets/app.js", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, js.StatusCode);
         Assert.Contains("immutable", js.Headers.CacheControl!.ToString());
-        Assert.Equal(HttpStatusCode.NotFound, (await app.Client().GetAsync("/mcp-docs/_assets/nope.js")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await app.Client().GetAsync("/mcp-docs/_assets/nope.js", TestContext.Current.CancellationToken)).StatusCode);
     }
 }

@@ -3,7 +3,9 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
+
 using Microsoft.AspNetCore.Http;
+
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -47,14 +49,14 @@ internal sealed class McpDocsCatalog
         _docs = docs;
         _endpoint = resolvedEndpoint;
 
-        var tools = server.ToolCollection?.OrderBy(t => t.ProtocolTool.Name, StringComparer.Ordinal)
+        IEnumerable<(Kind Tool, IMcpServerPrimitive)> tools = server.ToolCollection?.OrderBy(t => t.ProtocolTool.Name, StringComparer.Ordinal)
             .Select(t => (Kind.Tool, (IMcpServerPrimitive)t)) ?? [];
-        var prompts = server.PromptCollection?.OrderBy(p => p.ProtocolPrompt.Name, StringComparer.Ordinal)
+        IEnumerable<(Kind Prompt, IMcpServerPrimitive)> prompts = server.PromptCollection?.OrderBy(p => p.ProtocolPrompt.Name, StringComparer.Ordinal)
             .Select(p => (Kind.Prompt, (IMcpServerPrimitive)p)) ?? [];
-        var allResources = server.ResourceCollection?.ToList() ?? [];
-        var resources = allResources.Where(r => !r.IsTemplated && r.ProtocolResource is not null)
+        List<McpServerResource> allResources = server.ResourceCollection?.ToList() ?? [];
+        IEnumerable<(Kind Resource, IMcpServerPrimitive)> resources = allResources.Where(r => !r.IsTemplated && r.ProtocolResource is not null)
             .OrderBy(r => r.ProtocolResource!.Name, StringComparer.Ordinal).Select(r => (Kind.Resource, (IMcpServerPrimitive)r));
-        var templates = allResources.Where(r => r.IsTemplated)
+        IEnumerable<(Kind Template, IMcpServerPrimitive)> templates = allResources.Where(r => r.IsTemplated)
             .OrderBy(r => r.ProtocolResourceTemplate.Name, StringComparer.Ordinal).Select(r => (Kind.Template, (IMcpServerPrimitive)r));
 
         _items = tools.Concat(prompts).Concat(resources).Concat(templates)
@@ -65,41 +67,66 @@ internal sealed class McpDocsCatalog
     public async ValueTask<Result> GetAsync(HttpContext ctx)
     {
         // Key: one char per gated primitive, '1' = visible. Empty when nothing is gated.
-        var key = new char[_gated.Length];
-        for (var i = 0; i < _gated.Length; i++)
+        char[] key = new char[_gated.Length];
+        for (int i = 0; i < _gated.Length; i++)
+        {
             key[i] = await McpDocsAuthorization.IsAllowedAsync(ctx, _items[_gated[i]].Primitive) ? '1' : '0';
-        var k = new string(key);
+        }
 
-        if (_results.TryGetValue(k, out var cached)) return cached;
+        string k = new string(key);
 
-        var visible = new bool[_items.Length];
-        for (var i = 0; i < _items.Length; i++) visible[i] = !_items[i].Gated;
-        for (var i = 0; i < _gated.Length; i++) visible[_gated[i]] = key[i] == '1';
+        if (_results.TryGetValue(k, out Result? cached))
+        {
+            return cached;
+        }
 
-        var result = Build(visible);
-        if (_results.Count < MaxCachedVariants) _results.TryAdd(k, result);
+        bool[] visible = new bool[_items.Length];
+        for (int i = 0; i < _items.Length; i++)
+        {
+            visible[i] = !_items[i].Gated;
+        }
+
+        for (int i = 0; i < _gated.Length; i++)
+        {
+            visible[_gated[i]] = key[i] == '1';
+        }
+
+        Result result = Build(visible);
+        if (_results.Count < MaxCachedVariants)
+        {
+            _results.TryAdd(k, result);
+        }
+
         return result;
     }
 
     private Result Build(bool[] visible)
     {
-        var json = McpJsonUtilities.DefaultOptions;
-        var toolInfo = (JsonTypeInfo<Tool>)json.GetTypeInfo(typeof(Tool));
-        var promptInfo = (JsonTypeInfo<Prompt>)json.GetTypeInfo(typeof(Prompt));
-        var resourceInfo = (JsonTypeInfo<Resource>)json.GetTypeInfo(typeof(Resource));
-        var templateInfo = (JsonTypeInfo<ResourceTemplate>)json.GetTypeInfo(typeof(ResourceTemplate));
-        var implInfo = (JsonTypeInfo<Implementation>)json.GetTypeInfo(typeof(Implementation));
+        JsonSerializerOptions json = McpJsonUtilities.DefaultOptions;
+        JsonTypeInfo<Tool> toolInfo = (JsonTypeInfo<Tool>)json.GetTypeInfo(typeof(Tool));
+        JsonTypeInfo<Prompt> promptInfo = (JsonTypeInfo<Prompt>)json.GetTypeInfo(typeof(Prompt));
+        JsonTypeInfo<Resource> resourceInfo = (JsonTypeInfo<Resource>)json.GetTypeInfo(typeof(Resource));
+        JsonTypeInfo<ResourceTemplate> templateInfo = (JsonTypeInfo<ResourceTemplate>)json.GetTypeInfo(typeof(ResourceTemplate));
+        JsonTypeInfo<Implementation> implInfo = (JsonTypeInfo<Implementation>)json.GetTypeInfo(typeof(Implementation));
 
-        var info = _server.ServerInfo;
-        var serverName = info?.Name ?? "mcp-server";
+        Implementation? info = _server.ServerInfo;
+        string serverName = info?.Name ?? "mcp-server";
 
-        using var ms = new MemoryStream();
-        using (var w = new Utf8JsonWriter(ms))
+        using MemoryStream ms = new MemoryStream();
+        using (Utf8JsonWriter w = new Utf8JsonWriter(ms))
         {
             w.WriteStartObject();
 
             w.WritePropertyName("server");
-            if (info is null) w.WriteNullValue(); else JsonSerializer.Serialize(w, info, implInfo);
+            if (info is null)
+            {
+                w.WriteNullValue();
+            }
+            else
+            {
+                JsonSerializer.Serialize(w, info, implInfo);
+            }
+
             WriteString(w, "instructions", _server.ServerInstructions);
             WriteString(w, "protocolVersion", _server.ProtocolVersion);
 
@@ -117,7 +144,7 @@ internal sealed class McpDocsCatalog
             WriteString(w, "authHint", _docs.AuthHint);
             WriteString(w, "favicon", _docs.Favicon is null ? null : McpDocsTheme.Resolve(_docs.Favicon, _pathBase));
             w.WriteStartArray("links");
-            foreach (var l in _docs.ToolbarItems)
+            foreach (McpDocsToolbarItem l in _docs.ToolbarItems)
             {
                 w.WriteStartObject();
                 w.WriteString("label", l.Label);
@@ -132,10 +159,13 @@ internal sealed class McpDocsCatalog
             void Section(string name, Kind kind)
             {
                 w.WriteStartArray(name);
-                for (var i = 0; i < _items.Length; i++)
+                for (int i = 0; i < _items.Length; i++)
                 {
-                    var item = _items[i];
-                    if (item.Kind != kind || !visible[i]) continue;
+                    Item item = _items[i];
+                    if (item.Kind != kind || !visible[i])
+                    {
+                        continue;
+                    }
 
                     w.WriteStartObject();
                     w.WritePropertyName("definition");
@@ -154,12 +184,24 @@ internal sealed class McpDocsCatalog
                             WriteDefinition(w, r.ProtocolResourceTemplate, templateInfo);
                             break;
                     }
-                    if (item.Primitive is McpServerTool tool) WriteString(w, "group", _docs.ToolGroup(tool));
-                    if (item.Gated) McpDocsAuthorization.WriteRequirements(w, item.Primitive);
+                    if (item.Primitive is McpServerTool tool)
+                    {
+                        WriteString(w, "group", _docs.ToolGroup(tool));
+                    }
+
+                    if (item.Gated)
+                    {
+                        McpDocsAuthorization.WriteRequirements(w, item.Primitive);
+                    }
+
                     if (_docs.CheckDescriptions && McpDocsQuality.Check(item.Primitive) is { Count: > 0 } issues)
                     {
                         w.WriteStartArray("issues");
-                        foreach (var issue in issues) w.WriteStringValue(issue);
+                        foreach (string issue in issues)
+                        {
+                            w.WriteStringValue(issue);
+                        }
+
                         w.WriteEndArray();
                     }
                     w.WriteEndObject();
@@ -175,7 +217,7 @@ internal sealed class McpDocsCatalog
             w.WriteEndObject();
         }
 
-        var bytes = ms.ToArray();
+        byte[] bytes = ms.ToArray();
         return new Result(bytes, ETagOf(bytes));
     }
 
@@ -183,9 +225,16 @@ internal sealed class McpDocsCatalog
     private void WriteDefinition<T>(Utf8JsonWriter w, T value, JsonTypeInfo<T> info)
     {
         if (_docs.ShowMeta) { JsonSerializer.Serialize(w, value, info); return; }
-        var node = JsonSerializer.SerializeToNode(value, info);
+        JsonNode? node = JsonSerializer.SerializeToNode(value, info);
         node?.AsObject().Remove("_meta");
-        if (node is null) w.WriteNullValue(); else node.WriteTo(w);
+        if (node is null)
+        {
+            w.WriteNullValue();
+        }
+        else
+        {
+            node.WriteTo(w);
+        }
     }
 
     /// <summary>
@@ -196,8 +245,8 @@ internal sealed class McpDocsCatalog
     /// </summary>
     private void WriteCapabilities(Utf8JsonWriter w)
     {
-        var c = _server.Capabilities;
-        var h = _server.Handlers;
+        ServerCapabilities? c = _server.Capabilities;
+        McpServerHandlers? h = _server.Handlers;
         w.WriteStartObject("capabilities");
         w.WriteBoolean("completions", c?.Completions is not null || h?.CompleteHandler is not null);
         w.WriteBoolean("subscribe", c?.Resources?.Subscribe == true || h?.SubscribeToResourcesHandler is not null);
@@ -209,12 +258,15 @@ internal sealed class McpDocsCatalog
 
     private static void WriteString(Utf8JsonWriter w, string name, string? value)
     {
-        if (value is not null) w.WriteString(name, value);
+        if (value is not null)
+        {
+            w.WriteString(name, value);
+        }
     }
 
     internal static string Slug(string s)
     {
-        var chars = s.ToLowerInvariant().Select(c => char.IsAsciiLetterOrDigit(c) ? c : '-').ToArray();
+        char[] chars = s.ToLowerInvariant().Select(c => char.IsAsciiLetterOrDigit(c) ? c : '-').ToArray();
         return new string(chars).Trim('-');
     }
 }

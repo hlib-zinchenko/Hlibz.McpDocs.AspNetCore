@@ -109,20 +109,33 @@ public sealed class McpDocsOptions
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
         if (!McpDocsTheme.IsSafeLink(url))
+        {
             throw new ArgumentException($"Toolbar URL '{url}' must start with http://, https://, ~/ or /.", nameof(url));
+        }
+
         ToolbarItems.Add(new(label.Trim(), url.Trim(), newTab));
         return this;
     }
 
     internal void Validate()
     {
-        foreach (var (name, value) in new[] { (nameof(PrimaryColor), PrimaryColor), (nameof(DarkModePrimaryColor), DarkModePrimaryColor) })
+        foreach ((string? name, string? value) in new[] { (nameof(PrimaryColor), PrimaryColor), (nameof(DarkModePrimaryColor), DarkModePrimaryColor) })
+        {
             if (value is not null && !McpDocsTheme.IsSafeColor(value))
+            {
                 throw new ArgumentException($"{name} '{value}' is not a hex, rgb(), hsl() or named colour.");
+            }
+        }
+
         if (RegistryName is not null && !System.Text.RegularExpressions.Regex.IsMatch(RegistryName, @"^[a-zA-Z0-9.-]+/[a-zA-Z0-9._-]+$"))
+        {
             throw new ArgumentException($"RegistryName '{RegistryName}' must look like 'io.github.acme/orders' (reverse-DNS namespace, one slash).");
+        }
+
         if (Favicon is not null && !McpDocsTheme.IsSafeFavicon(Favicon))
+        {
             throw new ArgumentException($"Favicon '{Favicon}' must start with https://, data:image/, ~/ or /.");
+        }
     }
 
     /// <summary>
@@ -159,8 +172,8 @@ public static class McpDocsGrouping
     /// <summary>Groups by the prefix before the first <c>_</c>, <c>.</c> or <c>-</c> in the tool name.</summary>
     public static string? ByNamePrefix(McpServerTool tool)
     {
-        var name = tool.ProtocolTool.Name;
-        var i = name.IndexOfAny(['_', '.', '-']);
+        string name = tool.ProtocolTool.Name;
+        int i = name.IndexOfAny(['_', '.', '-']);
         return i > 0 ? name[..i] : null;
     }
 }

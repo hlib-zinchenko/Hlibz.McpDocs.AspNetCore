@@ -2,7 +2,9 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Text;
 using System.Text.Json.Nodes;
+
 using Hlibz.McpDocs.AspNetCore;
+
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,6 +13,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 using Microsoft.Net.Http.Headers;
+
 using ModelContextProtocol.Server;
 
 namespace Microsoft.AspNetCore.Builder;
@@ -31,47 +34,68 @@ public static class McpDocsEndpointRouteBuilderExtensions
     /// </summary>
     public static RouteGroupBuilder MapMcpDocs(this IEndpointRouteBuilder endpoints, string pattern = "/mcp-docs", Action<McpDocsOptions>? configure = null)
     {
-        var docs = new McpDocsOptions();
+        McpDocsOptions docs = new McpDocsOptions();
         configure?.Invoke(docs);
         docs.Validate();
 
-        var assets = McpDocsAssets.Load(docs);
-        var catalogs = new ConcurrentDictionary<string, McpDocsCatalog>(); // keyed by PathBase
-        var exports = new ConcurrentDictionary<string, McpDocsAsset>(StringComparer.Ordinal);
+        McpDocsAssets assets = McpDocsAssets.Load(docs);
+        ConcurrentDictionary<string, McpDocsCatalog> catalogs = new ConcurrentDictionary<string, McpDocsCatalog>(); // keyed by PathBase
+        ConcurrentDictionary<string, McpDocsAsset> exports = new ConcurrentDictionary<string, McpDocsAsset>(StringComparer.Ordinal);
 
-        var basePath = "/" + pattern.Trim('/');
-        var docsPrefix = basePath == "/" ? "" : basePath; // so "{PathBase}{docsPrefix}/" never doubles the slash
+        string basePath = "/" + pattern.Trim('/');
+        string docsPrefix = basePath == "/" ? "" : basePath; // so "{PathBase}{docsPrefix}/" never doubles the slash
 
         // Set once the app has started, if the setup is wrong. The app is stopped then; until it is, every docs
         // request fails with the same message instead of serving wrong connect snippets.
         string? setupError = null;
         void ThrowIfMisconfigured()
         {
-            if (Volatile.Read(ref setupError) is { } e) throw new InvalidOperationException(e);
+            if (Volatile.Read(ref setupError) is { } e)
+            {
+                throw new InvalidOperationException(e);
+            }
         }
 
         McpDocsCatalog GetCatalog(HttpContext ctx) => catalogs.GetOrAdd(ctx.Request.PathBase.Value ?? "", pb =>
         {
-            var server = ctx.RequestServices.GetRequiredService<IOptions<McpServerOptions>>().Value;
-            var found = McpDocsEndpointDiscovery.Resolve(ctx.RequestServices, docs, basePath).Endpoint;
-            var endpoint = found.StartsWith('/') ? pb + found : found;
+            McpServerOptions server = ctx.RequestServices.GetRequiredService<IOptions<McpServerOptions>>().Value;
+            string found = McpDocsEndpointDiscovery.Resolve(ctx.RequestServices, docs, basePath).Endpoint;
+            string endpoint = found.StartsWith('/') ? pb + found : found;
             return new McpDocsCatalog(server, docs, endpoint, pb);
         });
 
-        var group = endpoints.MapGroup(pattern);
+        RouteGroupBuilder group = endpoints.MapGroup(pattern);
 
         // Endpoints are only complete once the app has built its pipeline, so check when it starts.
-        var services = endpoints.ServiceProvider;
-        var lifetime = services.GetRequiredService<IHostApplicationLifetime>();
+        IServiceProvider services = endpoints.ServiceProvider;
+        IHostApplicationLifetime lifetime = services.GetRequiredService<IHostApplicationLifetime>();
         lifetime.ApplicationStarted.Register(() =>
         {
-            var log = services.GetRequiredService<ILoggerFactory>().CreateLogger("Hlibz.McpDocs.AspNetCore");
-            var check = McpDocsEndpointDiscovery.Resolve(services, docs, basePath);
-            foreach (var w in check.Warnings) log.LogWarning("{Message}", w);
+            ILogger log = services.GetRequiredService<ILoggerFactory>().CreateLogger("Hlibz.McpDocs.AspNetCore");
+            McpDocsEndpointDiscovery.Result check = McpDocsEndpointDiscovery.Resolve(services, docs, basePath);
+            foreach (string w in check.Warnings)
+            {
+                log.LogWarning("{Message}", w);
+            }
+
             if (docs.CheckDescriptions && services.GetService<IOptions<McpServerOptions>>()?.Value is { } server)
-                foreach (var w in McpDocsQuality.Warnings(server)) log.LogWarning("{Message}", w);
-            if (check.Errors.Count == 0) return;
-            foreach (var e in check.Errors) log.LogCritical("{Message}", e);
+            {
+                foreach (string w in McpDocsQuality.Warnings(server))
+                {
+                    log.LogWarning("{Message}", w);
+                }
+            }
+
+            if (check.Errors.Count == 0)
+            {
+                return;
+            }
+
+            foreach (string e in check.Errors)
+            {
+                log.LogCritical("{Message}", e);
+            }
+
             Volatile.Write(ref setupError, "MCP docs are misconfigured: " + string.Join(" ", check.Errors));
             lifetime.StopApplication();
         });
@@ -80,7 +104,11 @@ public static class McpDocsEndpointRouteBuilderExtensions
         group.MapMethods("", GetHead, ctx =>
         {
             ThrowIfMisconfigured();
-            if (ctx.Request.Path.Value?.EndsWith('/') == true) return Page(ctx, docs, assets);
+            if (ctx.Request.Path.Value?.EndsWith('/') == true)
+            {
+                return Page(ctx, docs, assets);
+            }
+
             ctx.Response.Redirect(ctx.Request.PathBase + docsPrefix + "/" + ctx.Request.QueryString);
             return Task.CompletedTask;
         }).ExcludeFromDescription(); // routing ignores the trailing slash, so this one route serves both forms
@@ -89,7 +117,7 @@ public static class McpDocsEndpointRouteBuilderExtensions
         {
             ThrowIfMisconfigured();
             // Content depends on the viewer once anything is [Authorize]d: never let a shared cache keep it.
-            var result = await GetCatalog(ctx).GetAsync(ctx);
+            McpDocsCatalog.Result result = await GetCatalog(ctx).GetAsync(ctx);
             await Send(ctx, result.Json, "application/json; charset=utf-8", result.ETag, "private, no-cache");
         }).ExcludeFromDescription();
 
@@ -98,20 +126,23 @@ public static class McpDocsEndpointRouteBuilderExtensions
         async Task Export(HttpContext ctx, string file, string contentType, Func<McpDocsExports.Source, string> render, string? attachment = null)
         {
             ThrowIfMisconfigured();
-            var result = await GetCatalog(ctx).GetAsync(ctx);
-            var req = ctx.Request;
-            var origin = $"{req.Scheme}://{req.Host}";
-            var pathBase = req.PathBase.Value ?? "";
-            var key = string.Join('\n', file, result.ETag, origin, pathBase);
-            if (!exports.TryGetValue(key, out var export))
+            McpDocsCatalog.Result result = await GetCatalog(ctx).GetAsync(ctx);
+            HttpRequest req = ctx.Request;
+            string origin = $"{req.Scheme}://{req.Host}";
+            string pathBase = req.PathBase.Value ?? "";
+            string key = string.Join('\n', file, result.ETag, origin, pathBase);
+            if (!exports.TryGetValue(key, out McpDocsAsset? export))
             {
-                var body = Encoding.UTF8.GetBytes(render(new McpDocsExports.Source(JsonNode.Parse(result.Json)!, result.ETag, origin, pathBase, basePath)));
+                byte[] body = Encoding.UTF8.GetBytes(render(new McpDocsExports.Source(JsonNode.Parse(result.Json)!, result.ETag, origin, pathBase, basePath)));
                 export = new McpDocsAsset(body, contentType, McpDocsCatalog.ETagOf(body), "");
-                if (exports.Count < MaxCachedExports) exports.TryAdd(key, export);
+                if (exports.Count < MaxCachedExports)
+                {
+                    exports.TryAdd(key, export);
+                }
             }
             if (attachment is not null)
             {
-                var disposition = new ContentDispositionHeaderValue("attachment");
+                ContentDispositionHeaderValue disposition = new ContentDispositionHeaderValue("attachment");
                 disposition.SetHttpFileName(attachment);
                 ctx.Response.Headers.ContentDisposition = disposition.ToString();
             }
@@ -126,17 +157,20 @@ public static class McpDocsEndpointRouteBuilderExtensions
             .ExcludeFromDescription();
 
         if (docs.RegistryName is { } registryName)
+        {
             group.MapMethods("/server.json", GetHead, ctx => Export(ctx, "server.json", "application/json; charset=utf-8", s => McpDocsExports.ServerJson(s, registryName)))
                 .ExcludeFromDescription();
+        }
 
         // The page as one self-contained file, as this viewer sees it: the download button's target.
         if (docs.HtmlExport)
+        {
             group.MapMethods("/docs.html", GetHead, ctx =>
             {
-                var server = ctx.RequestServices.GetRequiredService<IOptions<McpServerOptions>>().Value;
-                var key = docs.ServerKey ?? McpDocsCatalog.Slug(server.ServerInfo?.Name ?? "mcp-server");
+                McpServerOptions server = ctx.RequestServices.GetRequiredService<IOptions<McpServerOptions>>().Value;
+                string key = docs.ServerKey ?? McpDocsCatalog.Slug(server.ServerInfo?.Name ?? "mcp-server");
                 // ?theme=light|dark|system: the viewer's mode on the page, so the file opens the way they saw it.
-                var mode = (string?)ctx.Request.Query["theme"] switch
+                McpDocsColorMode mode = (string?)ctx.Request.Query["theme"] switch
                 {
                     "light" => McpDocsColorMode.Light,
                     "dark" => McpDocsColorMode.Dark,
@@ -146,11 +180,15 @@ public static class McpDocsEndpointRouteBuilderExtensions
                 return Export(ctx, "docs.html\n" + mode, "text/html; charset=utf-8", s => McpDocsStaticPage.FromRequest(s, docs, assets, mode),
                     attachment: (key.Length > 0 ? key : "mcp-server") + "-docs.html");
             }).ExcludeFromDescription();
+        }
 
         group.MapMethods("/_assets/{file}", GetHead, ctx =>
         {
-            if (ctx.Request.RouteValues["file"] is string file && assets.Files.TryGetValue(file, out var a))
+            if (ctx.Request.RouteValues["file"] is string file && assets.Files.TryGetValue(file, out McpDocsAsset? a))
+            {
                 return Send(ctx, a.Bytes, a.ContentType, a.ETag, "public, max-age=31536000, immutable");
+            }
+
             ctx.Response.StatusCode = StatusCodes.Status404NotFound;
             return Task.CompletedTask;
         }).ExcludeFromDescription();
@@ -160,20 +198,23 @@ public static class McpDocsEndpointRouteBuilderExtensions
 
     private static Task Page(HttpContext ctx, McpDocsOptions docs, McpDocsAssets assets)
     {
-        var title = WebUtility.HtmlEncode(docs.Title ?? ctx.RequestServices.GetService<IOptions<McpServerOptions>>()?.Value.ServerInfo?.Title ?? "MCP server");
-        var html = assets.PageTemplate
+        string title = WebUtility.HtmlEncode(docs.Title ?? ctx.RequestServices.GetService<IOptions<McpServerOptions>>()?.Value.ServerInfo?.Title ?? "MCP server");
+        string html = assets.PageTemplate
             .Replace("{{title}}", title)
             .Replace("{{download}}", docs.HtmlExport ? " data-download=\"docs.html\"" : "")
             .Replace("{{mode}}", docs.DefaultColorMode switch { McpDocsColorMode.Light => " data-theme=\"light\"", McpDocsColorMode.Dark => " data-theme=\"dark\"", _ => "" })
-            .Replace("{{theme}}", assets.Files.TryGetValue("theme.css", out var theme) ? $"<link rel=\"stylesheet\" href=\"_assets/theme.css?v={theme.Version}\">" : "")
-            .Replace("{{print}}", assets.Files.TryGetValue("print.css", out var print) ? $"<link rel=\"stylesheet\" media=\"print\" href=\"_assets/print.css?v={print.Version}\">" : "")
+            .Replace("{{theme}}", assets.Files.TryGetValue("theme.css", out McpDocsAsset? theme) ? $"<link rel=\"stylesheet\" href=\"_assets/theme.css?v={theme.Version}\">" : "")
+            .Replace("{{print}}", assets.Files.TryGetValue("print.css", out McpDocsAsset? print) ? $"<link rel=\"stylesheet\" media=\"print\" href=\"_assets/print.css?v={print.Version}\">" : "")
             .Replace("{{css}}", "_assets/app.css?v=" + assets.Files["app.css"].Version)
             .Replace("{{js}}", "_assets/app.js?v=" + assets.Files["app.js"].Version);
 
-        var h = ctx.Response.Headers;
+        IHeaderDictionary h = ctx.Response.Headers;
         // Ours is a default: an app with its own CSP middleware has already set the header, and wins.
         if (!h.ContainsKey(HeaderNames.ContentSecurityPolicy))
+        {
             h.ContentSecurityPolicy = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+        }
+
         h.XContentTypeOptions = "nosniff";
         h["Referrer-Policy"] = "no-referrer";
         h.CacheControl = "no-cache";
@@ -183,7 +224,7 @@ public static class McpDocsEndpointRouteBuilderExtensions
     /// <summary>Writes <paramref name="body"/> with its validator, or a 304 when the client already has it.</summary>
     private static Task Send(HttpContext ctx, byte[] body, string contentType, string etag, string cacheControl)
     {
-        var res = ctx.Response;
+        HttpResponse res = ctx.Response;
         res.Headers.ETag = etag;
         res.Headers.CacheControl = cacheControl;
         res.Headers.XContentTypeOptions = "nosniff";
@@ -209,15 +250,30 @@ public static class McpDocsEndpointRouteBuilderExtensions
     /// </summary>
     internal static bool NoneMatch(StringValues header, string etag)
     {
-        foreach (var value in header)
+        foreach (string? value in header)
         {
-            if (value is null) continue;
-            foreach (var part in value.Split(','))
+            if (value is null)
             {
-                var tag = part.Trim();
-                if (tag == "*") return true;
-                if (tag.StartsWith("W/", StringComparison.Ordinal)) tag = tag[2..];
-                if (tag == etag) return true;
+                continue;
+            }
+
+            foreach (string part in value.Split(','))
+            {
+                string tag = part.Trim();
+                if (tag == "*")
+                {
+                    return true;
+                }
+
+                if (tag.StartsWith("W/", StringComparison.Ordinal))
+                {
+                    tag = tag[2..];
+                }
+
+                if (tag == etag)
+                {
+                    return true;
+                }
             }
         }
         return false;

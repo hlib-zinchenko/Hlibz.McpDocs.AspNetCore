@@ -1,6 +1,9 @@
 using System.ComponentModel;
+
 using Hlibz.McpDocs.AspNetCore;
+
 using Microsoft.AspNetCore.Authorization;
+
 using ModelContextProtocol.Server;
 
 namespace Sample.McpServer.Tools;

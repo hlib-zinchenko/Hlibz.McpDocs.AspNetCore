@@ -37,11 +37,11 @@ internal static partial class McpDocsTheme
 
     public static string Build(McpDocsOptions o)
     {
-        var sb = new StringBuilder();
+        StringBuilder sb = new StringBuilder();
 
         // The dark-mode accent: the one given, else the light one mixed toward white. A brand colour picked for
         // white pages is usually too dark on a dark one (#4450c8 is 2.8:1 there; mixed, 7.4:1).
-        var darkColor = o.DarkModePrimaryColor
+        string? darkColor = o.DarkModePrimaryColor
             ?? (o.PrimaryColor is { } brand ? $"color-mix(in oklab,{brand} 55%,white)" : null);
 
         // The code panel is dark in both modes, so its accent is the dark-mode one; app.css already points
@@ -49,21 +49,40 @@ internal static partial class McpDocsTheme
         if (o.PrimaryColor is not null || darkColor is not null)
         {
             sb.Append(":root{");
-            if (o.PrimaryColor is { } light) sb.Append(Accent(light, 9));
-            if (darkColor is not null) sb.Append("--panel-accent:").Append(darkColor).Append(';');
+            if (o.PrimaryColor is { } light)
+            {
+                sb.Append(Accent(light, 9));
+            }
+
+            if (darkColor is not null)
+            {
+                sb.Append("--panel-accent:").Append(darkColor).Append(';');
+            }
+
             sb.Append("}\n");
         }
 
-        var dark = new StringBuilder(Preset(o.DarkPreset));
-        if (darkColor is not null) dark.Append(Accent(darkColor, 12));
-        else if (o.DarkPreset != McpDocsDarkPreset.Default) dark.Append("--accent-soft:color-mix(in srgb,var(--accent) 12%,transparent);");
+        StringBuilder dark = new StringBuilder(Preset(o.DarkPreset));
+        if (darkColor is not null)
+        {
+            dark.Append(Accent(darkColor, 12));
+        }
+        else if (o.DarkPreset != McpDocsDarkPreset.Default)
+        {
+            dark.Append("--accent-soft:color-mix(in srgb,var(--accent) 12%,transparent);");
+        }
+
         if (dark.Length > 0)
         {
             sb.Append("@media (prefers-color-scheme:dark){:root:not([data-theme=\"light\"]){").Append(dark).Append("}}\n");
             sb.Append(":root[data-theme=\"dark\"]{").Append(dark).Append("}\n");
         }
 
-        if (!string.IsNullOrWhiteSpace(o.AdditionalCss)) sb.Append(o.AdditionalCss).Append('\n');
+        if (!string.IsNullOrWhiteSpace(o.AdditionalCss))
+        {
+            sb.Append(o.AdditionalCss).Append('\n');
+        }
+
         return sb.ToString();
     }
 }

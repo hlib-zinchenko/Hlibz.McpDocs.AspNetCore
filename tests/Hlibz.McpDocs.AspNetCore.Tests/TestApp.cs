@@ -1,6 +1,9 @@
 using System.ComponentModel;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
+
+using Hlibz.McpDocs.AspNetCore;
+
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
@@ -9,7 +12,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Hlibz.McpDocs.AspNetCore;
+
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Server;
 
@@ -28,12 +31,12 @@ internal sealed class TestApp : IAsyncDisposable
         Action<IMcpServerBuilder>? server = null,
         Action<AuthorizationOptions>? authorization = null)
     {
-        var builder = WebApplication.CreateBuilder();
+        WebApplicationBuilder builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Logging.ClearProviders();
         builder.Services.AddAuthentication("Test").AddScheme<AuthenticationSchemeOptions, TestAuthHandler>("Test", null);
         builder.Services.AddAuthorization(o => authorization?.Invoke(o));
-        var mcp = builder.Services.AddMcpServer(o =>
+        IMcpServerBuilder mcp = builder.Services.AddMcpServer(o =>
             {
                 o.ServerInfo = new() { Name = "test-server", Title = "Test Server", Version = "1.0.0" };
                 o.ServerInstructions = "Use the tools.";
@@ -46,28 +49,40 @@ internal sealed class TestApp : IAsyncDisposable
             .AddAuthorizationFilters();
         server?.Invoke(mcp);
 
-        var app = builder.Build();
-        if (beforeDocs is not null) beforeDocs(app);
+        WebApplication app = builder.Build();
+        if (beforeDocs is not null)
+        {
+            beforeDocs(app);
+        }
+
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapMcp("/mcp");
-        var group = app.MapMcpDocs(docsPattern, configure);
-        if (requireAuth) group.RequireAuthorization();
+        Microsoft.AspNetCore.Routing.RouteGroupBuilder group = app.MapMcpDocs(docsPattern, configure);
+        if (requireAuth)
+        {
+            group.RequireAuthorization();
+        }
+
         await app.StartAsync();
         return new TestApp { App = app };
     }
 
     public HttpClient Client(string? roles = null)
     {
-        var c = App.GetTestClient();
-        if (roles is not null) c.DefaultRequestHeaders.Add("X-Roles", roles);
+        HttpClient c = App.GetTestClient();
+        if (roles is not null)
+        {
+            c.DefaultRequestHeaders.Add("X-Roles", roles);
+        }
+
         return c;
     }
 
     public async Task<McpClient> McpAsync(string? roles = null)
     {
-        var http = Client(roles);
-        var transport = new HttpClientTransport(new() { Endpoint = new Uri("http://localhost/mcp") }, http, ownsHttpClient: true);
+        HttpClient http = Client(roles);
+        HttpClientTransport transport = new HttpClientTransport(new() { Endpoint = new Uri("http://localhost/mcp") }, http, ownsHttpClient: true);
         return await McpClient.CreateAsync(transport);
     }
 
@@ -77,9 +92,13 @@ internal sealed class TestApp : IAsyncDisposable
     {
         protected override Task<AuthenticateResult> HandleAuthenticateAsync()
         {
-            if (!Request.Headers.TryGetValue("X-Roles", out var roles)) return Task.FromResult(AuthenticateResult.NoResult());
-            var claims = roles.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries).Select(r => new Claim(ClaimTypes.Role, r)).Append(new Claim(ClaimTypes.Name, "tester"));
-            var id = new ClaimsIdentity(claims, "Test");
+            if (!Request.Headers.TryGetValue("X-Roles", out Microsoft.Extensions.Primitives.StringValues roles))
+            {
+                return Task.FromResult(AuthenticateResult.NoResult());
+            }
+
+            IEnumerable<Claim> claims = roles.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries).Select(r => new Claim(ClaimTypes.Role, r)).Append(new Claim(ClaimTypes.Name, "tester"));
+            ClaimsIdentity id = new ClaimsIdentity(claims, "Test");
             return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(id), "Test")));
         }
     }

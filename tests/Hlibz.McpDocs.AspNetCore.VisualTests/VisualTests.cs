@@ -1,6 +1,8 @@
-using Microsoft.Playwright;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+
+using Microsoft.Playwright;
+
 using Xunit;
 
 namespace Hlibz.McpDocs.AspNetCore.VisualTests;
@@ -8,7 +10,7 @@ namespace Hlibz.McpDocs.AspNetCore.VisualTests;
 /// <summary>
 /// Screenshots of the page against checked-in baselines (per OS: font rendering differs). A missing baseline
 /// is written and the test passes; <c>UPDATE_SNAPSHOTS=1</c> accepts changes. Needs Chromium:
-/// <c>pwsh tests/Visual/bin/Debug/net8.0/playwright.ps1 install chromium</c>.
+/// <c>pwsh tests/Hlibz.McpDocs.AspNetCore.VisualTests/bin/Debug/net10.0/playwright.ps1 install chromium</c>.
 /// </summary>
 [Trait("Category", "Screenshot")]
 public class VisualTests : IAsyncLifetime
@@ -21,14 +23,14 @@ public class VisualTests : IAsyncLifetime
     private IPlaywright _pw = null!;
     private IBrowser _browser = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _app = await VisualApp.StartAsync();
         _pw = await Playwright.CreateAsync();
         _browser = await _pw.Chromium.LaunchAsync();
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         await _browser.DisposeAsync();
         _pw.Dispose();
@@ -60,20 +62,20 @@ public class VisualTests : IAsyncLifetime
 
     private async Task Check(string name, string hash, ColorScheme scheme, int width, int height)
     {
-        await using var ctx = await _browser.NewContextAsync(new()
+        await using IBrowserContext ctx = await _browser.NewContextAsync(new()
         {
             ColorScheme = scheme,
             ViewportSize = new() { Width = width, Height = height },
             ReducedMotion = ReducedMotion.Reduce,
         });
-        var page = await ctx.NewPageAsync();
+        IPage page = await ctx.NewPageAsync();
         await page.GotoAsync($"{_app.BaseUrl}/mcp-docs/{hash}");
         await page.WaitForSelectorAsync("main :first-child");
         await page.EvaluateAsync("document.fonts.ready");
         await page.WaitForTimeoutAsync(300);
-        var actual = await page.ScreenshotAsync(new() { Animations = ScreenshotAnimations.Disabled });
+        byte[] actual = await page.ScreenshotAsync(new() { Animations = ScreenshotAnimations.Disabled });
 
-        var path = Path.Combine(Dir(), name + ".png");
+        string path = Path.Combine(Dir(), name + ".png");
         if (Environment.GetEnvironmentVariable("UPDATE_SNAPSHOTS") == "1" || !File.Exists(path))
         {
             Directory.CreateDirectory(Dir());
@@ -83,14 +85,14 @@ public class VisualTests : IAsyncLifetime
 
         // Decode and compare in the browser (canvas) on a blank page, so the docs page's CSP doesn't apply
         // and the tests need no image library.
-        var blank = await ctx.NewPageAsync();
-        var r = await blank.EvaluateAsync<int[]>(CompareJs, new object[] { Convert.ToBase64String(actual), Convert.ToBase64String(await File.ReadAllBytesAsync(path)), ChannelTolerance });
+        IPage blank = await ctx.NewPageAsync();
+        int[] r = await blank.EvaluateAsync<int[]>(CompareJs, new object[] { Convert.ToBase64String(actual), Convert.ToBase64String(await File.ReadAllBytesAsync(path)), ChannelTolerance });
         Assert.True(r[0] == r[2] && r[1] == r[3], $"{name}: size {r[0]}x{r[1]} != baseline {r[2]}x{r[3]}");
         long changed = r[4];
-        var fraction = (double)changed / ((long)r[0] * r[1]);
+        double fraction = (double)changed / ((long)r[0] * r[1]);
         if (fraction > MaxChangedFraction)
         {
-            var diff = Path.Combine(Path.GetTempPath(), name + ".actual.png");
+            string diff = Path.Combine(Path.GetTempPath(), name + ".actual.png");
             await File.WriteAllBytesAsync(diff, actual);
             Assert.Fail($"{name}: {fraction:P2} of pixels changed. Actual saved to {diff}; UPDATE_SNAPSHOTS=1 accepts it.");
         }

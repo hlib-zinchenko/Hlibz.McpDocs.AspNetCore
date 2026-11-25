@@ -22,9 +22,12 @@ grep -q "<icon>icon.png</icon>" "$work/package.nuspec" || fail "The nuspec does 
 
 # The page is the package: an EmbeddedResource that stops matching its file still packs, and
 # then every request for the page or its script fails.
-unzip -p "$pkg" 'lib/*/Hlibz.McpDocs.AspNetCore.dll' > "$work/lib.dll"
-for asset in index.html app.js app.css print.css; do
-  grep -aq "McpDocs.$asset" "$work/lib.dll" || fail "McpDocs.$asset is not embedded in the assembly."
+# One assembly per target framework, each checked.
+for tfm in net10.0 net11.0; do
+  unzip -p "$pkg" "lib/$tfm/Hlibz.McpDocs.AspNetCore.dll" > "$work/lib.dll" || fail "lib/$tfm is missing."
+  for asset in index.html app.js app.css print.css; do
+    grep -aq "McpDocs.$asset" "$work/lib.dll" || fail "McpDocs.$asset is not embedded in the $tfm assembly."
+  done
 done
 
 echo "Package checks passed: $(basename "$pkg")"

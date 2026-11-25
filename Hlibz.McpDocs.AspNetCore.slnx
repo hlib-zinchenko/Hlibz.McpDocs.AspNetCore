@@ -6,7 +6,7 @@
     <Project Path="src/Hlibz.McpDocs.AspNetCore/Hlibz.McpDocs.AspNetCore.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/Hlibz.McpDocs.AspNetCore.Tests.csproj" />
-    <Project Path="tests/Visual/Hlibz.McpDocs.AspNetCore.VisualTests.csproj" />
+    <Project Path="tests/Hlibz.McpDocs.AspNetCore.Tests/Hlibz.McpDocs.AspNetCore.Tests.csproj" />
+    <Project Path="tests/Hlibz.McpDocs.AspNetCore.VisualTests/Hlibz.McpDocs.AspNetCore.VisualTests.csproj" />
   </Folder>
 </Solution>

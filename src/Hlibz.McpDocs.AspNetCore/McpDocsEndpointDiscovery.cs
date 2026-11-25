@@ -18,12 +18,12 @@ internal static class McpDocsEndpointDiscovery
 
     public static Result Resolve(IServiceProvider services, McpDocsOptions docs, string docsBasePath)
     {
-        var errors = new List<string>();
-        var warnings = new List<string>();
-        var routes = services.GetServices<EndpointDataSource>()
+        List<string> errors = new List<string>();
+        List<string> warnings = new List<string>();
+        List<RouteEndpoint> routes = services.GetServices<EndpointDataSource>()
             .SelectMany(d => d.Endpoints).OfType<RouteEndpoint>().ToList();
-        var mcp = routes.Where(e => e.DisplayName?.StartsWith(McpDisplayNamePrefix, StringComparison.Ordinal) == true).ToList();
-        var mcpPaths = mcp.Select(e => Normalize(e.RoutePattern.RawText)).Distinct().ToList();
+        List<RouteEndpoint> mcp = routes.Where(e => e.DisplayName?.StartsWith(McpDisplayNamePrefix, StringComparison.Ordinal) == true).ToList();
+        List<string> mcpPaths = mcp.Select(e => Normalize(e.RoutePattern.RawText)).Distinct().ToList();
 
         string endpoint;
         if (docs.McpEndpoint is { } configured)
@@ -32,17 +32,21 @@ internal static class McpDocsEndpointDiscovery
             // An absolute URL points somewhere we can't check (gateway, other host).
             if (configured.StartsWith('/'))
             {
-                var wanted = Normalize(configured);
+                string wanted = Normalize(configured);
                 if (!routes.Any(e => Normalize(e.RoutePattern.RawText) == wanted))
+                {
                     errors.Add($"McpDocsOptions.McpEndpoint is '{configured}' but no route with that path is mapped" +
                                (mcpPaths.Count > 0 ? $"; MapMcp is at {string.Join(", ", mcpPaths.Select(p => $"'{p}'"))}." : ". Is MapMcp called?"));
+                }
             }
         }
         else if (mcpPaths.Count > 0)
         {
             endpoint = mcpPaths[0];
             if (mcpPaths.Count > 1)
+            {
                 warnings.Add($"MapMcp is mapped at several paths ({string.Join(", ", mcpPaths)}); the docs page uses '{endpoint}'. Set McpDocsOptions.McpEndpoint to choose.");
+            }
         }
         else
         {
@@ -51,12 +55,14 @@ internal static class McpDocsEndpointDiscovery
         }
 
         // A gated MCP endpoint next to an open docs page publishes the whole surface to people the server turns away.
-        var fallback = services.GetService<IOptions<AuthorizationOptions>>()?.Value.FallbackPolicy;
+        AuthorizationPolicy? fallback = services.GetService<IOptions<AuthorizationOptions>>()?.Value.FallbackPolicy;
         if (fallback is null
             && mcp.Any(e => e.Metadata.GetMetadata<IAuthorizeData>() is not null)
             && !routes.Where(e => IsUnder(e, docsBasePath)).Any(e => e.Metadata.GetMetadata<IAuthorizeData>() is not null))
+        {
             warnings.Add($"The MCP endpoint requires authorization but the docs page at '{docsBasePath}' does not. " +
                          "Call .RequireAuthorization() on MapMcpDocs, or accept that the page is public ([Authorize] primitives are still filtered per viewer).");
+        }
 
         return new(endpoint, errors, warnings);
     }
@@ -66,7 +72,7 @@ internal static class McpDocsEndpointDiscovery
 
     private static string Normalize(string? path)
     {
-        var p = "/" + (path ?? "").Trim('/');
+        string p = "/" + (path ?? "").Trim('/');
         return p.ToLowerInvariant();
     }
 }

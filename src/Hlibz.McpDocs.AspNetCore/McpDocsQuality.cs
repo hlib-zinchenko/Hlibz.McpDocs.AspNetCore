@@ -1,4 +1,5 @@
 using System.Text.Json;
+
 using ModelContextProtocol.Server;
 
 namespace Hlibz.McpDocs.AspNetCore;
@@ -8,23 +9,47 @@ internal static class McpDocsQuality
 {
     public static List<string> Check(IMcpServerPrimitive primitive)
     {
-        var issues = new List<string>();
+        List<string> issues = new List<string>();
         switch (primitive)
         {
             case McpServerTool { ProtocolTool: var t }:
-                if (string.IsNullOrWhiteSpace(t.Description)) issues.Add("No description.");
-                if (t.Annotations is null) issues.Add("No annotations (readOnly / destructive / idempotent / openWorld hints).");
-                var missing = UndescribedProperties(t.InputSchema);
-                if (missing.Count > 0) issues.Add("Parameters without a description: " + string.Join(", ", missing) + ".");
+                if (string.IsNullOrWhiteSpace(t.Description))
+                {
+                    issues.Add("No description.");
+                }
+
+                if (t.Annotations is null)
+                {
+                    issues.Add("No annotations (readOnly / destructive / idempotent / openWorld hints).");
+                }
+
+                List<string> missing = UndescribedProperties(t.InputSchema);
+                if (missing.Count > 0)
+                {
+                    issues.Add("Parameters without a description: " + string.Join(", ", missing) + ".");
+                }
+
                 break;
             case McpServerPrompt { ProtocolPrompt: var p }:
-                if (string.IsNullOrWhiteSpace(p.Description)) issues.Add("No description.");
-                var args = p.Arguments?.Where(a => string.IsNullOrWhiteSpace(a.Description)).Select(a => a.Name).ToList() ?? [];
-                if (args.Count > 0) issues.Add("Arguments without a description: " + string.Join(", ", args) + ".");
+                if (string.IsNullOrWhiteSpace(p.Description))
+                {
+                    issues.Add("No description.");
+                }
+
+                List<string> args = p.Arguments?.Where(a => string.IsNullOrWhiteSpace(a.Description)).Select(a => a.Name).ToList() ?? [];
+                if (args.Count > 0)
+                {
+                    issues.Add("Arguments without a description: " + string.Join(", ", args) + ".");
+                }
+
                 break;
             case McpServerResource r:
-                var desc = r.IsTemplated ? r.ProtocolResourceTemplate.Description : r.ProtocolResource?.Description;
-                if (string.IsNullOrWhiteSpace(desc)) issues.Add("No description.");
+                string? desc = r.IsTemplated ? r.ProtocolResourceTemplate.Description : r.ProtocolResource?.Description;
+                if (string.IsNullOrWhiteSpace(desc))
+                {
+                    issues.Add("No description.");
+                }
+
                 break;
         }
         return issues;
@@ -32,13 +57,21 @@ internal static class McpDocsQuality
 
     private static List<string> UndescribedProperties(JsonElement schema)
     {
-        var names = new List<string>();
-        if (schema.ValueKind != JsonValueKind.Object || !schema.TryGetProperty("properties", out var props) || props.ValueKind != JsonValueKind.Object)
+        List<string> names = new List<string>();
+        if (schema.ValueKind != JsonValueKind.Object || !schema.TryGetProperty("properties", out JsonElement props) || props.ValueKind != JsonValueKind.Object)
+        {
             return names;
-        foreach (var p in props.EnumerateObject())
-            if (!(p.Value.ValueKind == JsonValueKind.Object && p.Value.TryGetProperty("description", out var d)
+        }
+
+        foreach (JsonProperty p in props.EnumerateObject())
+        {
+            if (!(p.Value.ValueKind == JsonValueKind.Object && p.Value.TryGetProperty("description", out JsonElement d)
                   && d.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(d.GetString())))
+            {
                 names.Add(p.Name);
+            }
+        }
+
         return names;
     }
 
@@ -56,10 +89,13 @@ internal static class McpDocsQuality
     {
         IEnumerable<IMcpServerPrimitive> all = [
             .. server.ToolCollection ?? [], .. server.PromptCollection ?? [], .. server.ResourceCollection ?? []];
-        foreach (var p in all)
+        foreach (IMcpServerPrimitive p in all)
         {
-            var issues = Check(p);
-            if (issues.Count > 0) yield return $"MCP docs: {Name(p)}: {string.Join(" ", issues)}";
+            List<string> issues = Check(p);
+            if (issues.Count > 0)
+            {
+                yield return $"MCP docs: {Name(p)}: {string.Join(" ", issues)}";
+            }
         }
     }
 }

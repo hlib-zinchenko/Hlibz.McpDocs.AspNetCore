@@ -1,5 +1,7 @@
 using System.ComponentModel;
+
 using Hlibz.McpDocs.AspNetCore;
+
 using ModelContextProtocol.Server;
 
 namespace Sample.McpServer.Tools;

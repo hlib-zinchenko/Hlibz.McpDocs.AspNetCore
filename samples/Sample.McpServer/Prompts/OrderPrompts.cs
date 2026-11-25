@@ -1,5 +1,7 @@
 using System.ComponentModel;
+
 using Microsoft.AspNetCore.Authorization;
+
 using ModelContextProtocol.Server;
 
 namespace Sample.McpServer.Prompts;
