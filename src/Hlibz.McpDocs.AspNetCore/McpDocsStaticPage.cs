@@ -26,6 +26,7 @@ internal static partial class McpDocsStaticPage
     {
         JsonObject d = catalog["docs"]!.AsObject();
         d["static"] = true;
+        d.Remove("tryIt"); // a file opened from disk or another host can't call the server
         if (endpoint is null)
         {
             d.Remove("mcpEndpoint");

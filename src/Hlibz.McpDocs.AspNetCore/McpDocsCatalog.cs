@@ -40,13 +40,16 @@ internal sealed class McpDocsCatalog
     private readonly McpDocsOptions _docs;
     private readonly string? _endpoint;
     private readonly string _pathBase;
+    private readonly string? _tryItUnavailable;
     private readonly Item[] _items;
     private readonly int[] _gated; // indexes into _items; empty when gated primitives are shown to everyone
     private readonly ConcurrentDictionary<string, Result> _results = new(StringComparer.Ordinal);
 
-    public McpDocsCatalog(McpServerOptions server, McpDocsOptions docs, string? resolvedEndpoint, string pathBase = "")
+    // tryItUnavailable: why the try-it console can't run against this server, if it can't (McpDocsTryItOptions.Unavailable).
+    public McpDocsCatalog(McpServerOptions server, McpDocsOptions docs, string? resolvedEndpoint, string pathBase = "", string? tryItUnavailable = null)
     {
         _pathBase = pathBase;
+        _tryItUnavailable = tryItUnavailable;
         _server = server;
         _docs = docs;
         _endpoint = resolvedEndpoint;
@@ -158,6 +161,7 @@ internal sealed class McpDocsCatalog
                 w.WriteEndObject();
             }
             w.WriteEndArray();
+            WriteTryIt(w);
             w.WriteEndObject();
 
             // Every entry: { group? (tools only), definition, authorization? }
@@ -224,6 +228,32 @@ internal sealed class McpDocsCatalog
 
         byte[] bytes = ms.ToArray();
         return new Result(bytes, ETagOf(bytes));
+    }
+
+    // The console's settings, when it is on. A static export drops the object: a file can't call the server.
+    private void WriteTryIt(Utf8JsonWriter w)
+    {
+        if (_docs.TryIt is not { } tryIt)
+        {
+            return;
+        }
+
+        w.WriteStartObject("tryIt");
+        w.WriteString("credentialStorage", tryIt.CredentialStorage switch
+        {
+            McpDocsTryItCredentialStorage.Session => "session",
+            McpDocsTryItCredentialStorage.Local => "local",
+            _ => "memory",
+        });
+        if (tryIt.CredentialLifetime is { } lifetime)
+        {
+            w.WriteNumber("credentialLifetime", (long)Math.Ceiling(lifetime.TotalSeconds)); // seconds
+        }
+
+        w.WriteBoolean("sendCookies", tryIt.SendCookies);
+        w.WriteBoolean("readOnlyOnly", tryIt.ReadOnlyOnly);
+        WriteString(w, "unavailable", _tryItUnavailable);
+        w.WriteEndObject();
     }
 
     // Streamed straight through unless _meta has to go: then via a node, so the rest stays what the SDK serialized.

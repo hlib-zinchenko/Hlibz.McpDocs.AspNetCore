@@ -22,3 +22,4 @@ a[href^="http"]::after { content: " (" attr(href) ")"; font-size: .85em; color: 
 .code.json { padding-left: 16px; }
 .j-fold > .j-in { display: inline !important; }
 .j-tog, .j-sum { display: none !important; }
+dialog.ti { display: none !important; }

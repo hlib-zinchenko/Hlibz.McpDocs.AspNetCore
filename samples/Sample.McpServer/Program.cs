@@ -1,9 +1,11 @@
 using System.Security.Claims;
+using System.Text.Encodings.Web;
 
 using Hlibz.McpDocs.AspNetCore;
 
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.Extensions.Options;
 
 using ModelContextProtocol.Server;
 
@@ -11,9 +13,15 @@ using Sample.McpServer.Tools;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-// Demo auth: a cookie set by /demo/sign-in. A real server would use JWT bearer / OAuth for MCP clients;
-// with GatedPrimitives = Hide the docs page evaluates [Authorize] against whoever the browser is signed in as.
-builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie();
+// Demo auth: a cookie set by /demo/sign-in, and a bearer token for MCP clients and the docs page's try-it console.
+// The demo token is simply the roles it grants ("admin,finance"): never accept tokens like this outside a sample.
+// A real server would use JWT bearer / OAuth. With GatedPrimitives = Hide the docs page evaluates [Authorize]
+// against whoever the browser is signed in as (the cookie); try-it calls go out with the token.
+builder.Services.AddAuthentication("Demo")
+    .AddPolicyScheme("Demo", null, o => o.ForwardDefaultSelector = ctx =>
+        ctx.Request.Headers.Authorization.ToString().StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? DemoBearerHandler.SchemeName : CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie()
+    .AddScheme<AuthenticationSchemeOptions, DemoBearerHandler>(DemoBearerHandler.SchemeName, null);
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("Finance", p => p.RequireRole("finance"));
 
@@ -46,7 +54,10 @@ static void Docs(McpDocsOptions o)
     o.Description = "Look up, create and cancel **Acme** orders from any MCP client. Read-only tools are safe to enable for everyone; " +
                     "destructive ones need the `orders:write` scope.";
     o.AuthHeader = "Authorization";
-    o.AuthHint = "Ask in [#acme-integrations](https://example.com/slack) for a personal access token.";
+    o.AuthHint = "Ask in [#acme-integrations](https://example.com/slack) for a personal access token. " +
+                 "In this sample any token works: it is the roles it grants, e.g. `admin,finance`.";
+    // A "Try it" button on every tool, prompt and resource; the token is kept for the tab.
+    o.EnableTryIt(t => t.CredentialStorage = McpDocsTryItCredentialStorage.Session);
     o.AddToolbarItem("Changelog", "https://example.com/changelog");
     // [Authorize]d primitives are listed for everyone, with what they require. To list them per viewer instead,
     // uncomment this and sign in with /demo/sign-in?roles=admin,finance:
@@ -88,3 +99,28 @@ if (app.Environment.IsDevelopment())
 }
 
 app.Run();
+
+/// <summary>Sample only: accepts any bearer token and reads it as a comma-separated list of roles.</summary>
+internal sealed class DemoBearerHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
+    : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+{
+    public const string SchemeName = "DemoBearer";
+
+    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+    {
+        string header = Request.Headers.Authorization.ToString();
+        if (!header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            return Task.FromResult(AuthenticateResult.NoResult());
+        }
+
+        string[] roles = header["Bearer ".Length..].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (roles.Length == 0)
+        {
+            return Task.FromResult(AuthenticateResult.Fail("Empty token."));
+        }
+
+        ClaimsIdentity identity = new ClaimsIdentity(roles.Select(r => new Claim(ClaimTypes.Role, r)).Append(new Claim(ClaimTypes.Name, "token-user")), SchemeName);
+        return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName)));
+    }
+}

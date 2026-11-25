@@ -125,7 +125,7 @@ public static class McpDocsSnapshot
     private static async Task<JsonNode> CatalogAsync(IServiceProvider services, McpDocsOptions docs, string? endpoint, ClaimsPrincipal? viewer)
     {
         McpServerOptions server = services.GetRequiredService<IOptions<McpServerOptions>>().Value;
-        McpDocsCatalog catalog = new McpDocsCatalog(server, docs, endpoint);
+        McpDocsCatalog catalog = new McpDocsCatalog(server, docs, endpoint, tryItUnavailable: McpDocsTryItOptions.Unavailable(services));
 
         using IServiceScope scope = services.CreateScope();
         DefaultHttpContext ctx = new DefaultHttpContext { RequestServices = scope.ServiceProvider, User = viewer ?? new ClaimsPrincipal(new ClaimsIdentity()) };

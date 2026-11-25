@@ -106,6 +106,30 @@ public sealed class McpDocsOptions
     /// </summary>
     public string? Favicon { get; set; }
 
+    /// <summary>
+    /// The try-it console's settings, or <see langword="null"/> while it is off. Off by default;
+    /// <see cref="EnableTryIt"/> turns it on.
+    /// </summary>
+    public McpDocsTryItOptions? TryIt { get; private set; }
+
+    /// <summary>
+    /// Adds a "Try it" button to each tool, prompt and resource. It opens a console that calls the MCP endpoint from
+    /// the viewer's browser, with the token they type sent in <see cref="AuthHeader"/> (<c>Authorization</c> when
+    /// unset). See <see cref="McpDocsTryItOptions"/> for what it supports.
+    /// </summary>
+    /// <param name="configure">Optional settings for the console.</param>
+    /// <returns>These options, for chaining.</returns>
+    /// <remarks>
+    /// The console is part of the page's script, so the page's Content-Security-Policy is unchanged. Calling this
+    /// again keeps the earlier settings and applies <paramref name="configure"/> on top of them.
+    /// </remarks>
+    public McpDocsOptions EnableTryIt(Action<McpDocsTryItOptions>? configure = null)
+    {
+        TryIt ??= new McpDocsTryItOptions();
+        configure?.Invoke(TryIt);
+        return this;
+    }
+
     internal List<McpDocsToolbarItem> ToolbarItems { get; } = [];
 
     /// <summary>

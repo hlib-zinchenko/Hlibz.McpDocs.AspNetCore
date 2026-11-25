@@ -2,9 +2,10 @@
 
 # Hlibz.McpDocs.AspNetCore
 
-**A read-only, ReDoc-style documentation page for an MCP server hosted in ASP.NET Core.** It shows
+**A ReDoc-style documentation page for an MCP server hosted in ASP.NET Core.** It shows
 what the server offers (tools, prompts, resources) and how to connect to it, from the registrations
-the MCP SDK already has, with nothing to write twice.
+the MCP SDK already has, with nothing to write twice. Turn on the try-it console and readers can call
+them from the page too.
 
 [![CI](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/actions/workflows/ci.yml/badge.svg)](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/actions/workflows/ci.yml)
 [![NuGet](https://img.shields.io/nuget/v/Hlibz.McpDocs.AspNetCore.svg)](https://www.nuget.org/packages/Hlibz.McpDocs.AspNetCore)
@@ -24,6 +25,8 @@ app.MapMcpDocs("/mcp-docs");   // that's the whole zero-config path
   one-click "Add to VS Code" and "Add to Cursor" buttons.
 - **Documents everything, like OpenAPI docs.** `[Authorize]`d primitives are listed with a lock badge naming the
   roles and policies they need; the endpoint still refuses callers without them. Or filter them per viewer.
+- **Try it** (opt-in): call a tool, get a prompt or read a resource from the page with a bearer token, and see
+  the content blocks, messages or contents that come back. See [Try it](#try-it).
 - **Exports for agents:** `catalog.json`, `catalog.md`, `llms.txt`, and a `server.json` for the MCP Registry.
 - **A static page too:** the same page as one HTML file, for GitHub Pages, readers who can't reach the app, or a stdio server.
 - **Checks your descriptions.** Missing descriptions and annotations are flagged on the page and logged at startup.
@@ -70,6 +73,7 @@ app.MapMcpDocs("/mcp-docs", o =>
     o.Description = "What this server is for, **Markdown** subset.";
     o.AuthHeader = "Authorization";    // optional: adds the header to the snippets
     o.AuthHint = "Where to get a token.";
+    o.EnableTryIt();                   // optional: a "Try it" button on each tool, prompt and resource
 })
 .RequireAuthorization();               // RouteGroupBuilder: covers page, catalog.json and assets
 ```
@@ -81,6 +85,9 @@ To try it, run the sample and open http://localhost:5168/mcp-docs/:
 ```bash
 dotnet run --project samples/Sample.McpServer --launch-profile http
 ```
+
+The [sample's README](https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore/blob/main/samples/Sample.McpServer/README.md)
+lists what it offers, which entries need which role, and how to sign in with a demo token or cookie.
 
 ## Options
 
@@ -95,6 +102,7 @@ All optional. Set them in the `MapMcpDocs` callback.
 | `AuthHeader` | none | Adds this header, with `AuthPlaceholder`, to the snippets. |
 | `AuthPlaceholder` | `Bearer <token>` | Placeholder value for `AuthHeader`. |
 | `AuthHint` | none | How to get credentials (Markdown subset). |
+| `EnableTryIt(configure)` | off | A "Try it" button on each tool, prompt and resource that calls the MCP endpoint from the browser. See [Try it](#try-it). |
 | `GatedPrimitives` | `Show` | `[Authorize]`d tools, prompts and resources: `Show` lists them for everyone with what they require; `Hide` lists them only for viewers who pass. See [Authorization](#authorization). |
 | `ToolGroup` | `McpDocsGrouping.ByAttribute` | Sidebar group per tool; also `ByNamePrefix`, `None`, or your own function. |
 | `HtmlExport` | `true` | A download button beside the theme toggle that saves the page as one HTML file (`{pattern}/docs.html`), as the viewer sees it. See [Static page](#static-page). |
@@ -162,6 +170,58 @@ app.MapMcpDocs("/mcp-docs", ConfigureDocs);
 
 The sample has the switch above: `dotnet run --project samples/Sample.McpServer -- --export-html site/index.html`.
 
+## Try it
+
+`o.EnableTryIt()` adds a **Try it** button beside each primitive's request sample. It opens a panel with the
+arguments prefilled from the schema (a JSON editor for tools, a field per argument for prompts and per variable
+for resource templates), a token field, and Send. The answer shows as a tool's content blocks (text, JSON
+folded like the samples, images) and `structuredContent`, the messages a prompt expands to, or a resource's
+contents, with the raw response one click away. The request it sends is shown too, and copies as `curl`.
+
+```csharp
+app.MapMcpDocs("/mcp-docs", o =>
+{
+    o.AuthHeader = "Authorization";
+    o.EnableTryIt(t =>
+    {
+        t.CredentialStorage = McpDocsTryItCredentialStorage.Session;   // keep the token for the tab
+        t.ReadOnlyOnly = true;                                         // only read-only tools get a button
+    });
+});
+```
+
+| Setting | Default | What it does |
+|---|---|---|
+| `CredentialStorage` | `Memory` | Where the typed token is kept: `Memory` (gone on reload), `Session` (`sessionStorage`, for the tab) or `Local` (`localStorage`). A stored token has a Forget button. |
+| `CredentialLifetime` | 8 hours | How long a stored token lasts after it was last typed; `null` keeps it until forgotten. |
+| `SendCookies` | `true` | Send the browser's cookies for this origin, so cookie-authenticated endpoints work for a signed-in viewer. `false` sends only the token. |
+| `ReadOnlyOnly` | `false` | Only tools annotated `readOnlyHint: true` get a button; prompts and resources always do. A convenience, not access control. |
+
+**How it calls the server.** One `POST` per call, in the stateless Streamable HTTP shape the SDK serves by default
+(protocol `2026-07-28`): `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` headers, the protocol fields in
+`_meta`, no `initialize` and no session. Parameters marked `[McpHeader]` are mirrored into their `Mcp-Param-*`
+headers, and values that aren't plain ASCII go Base64-encoded, as the SDK requires. The console tells the server it
+supports nothing (`clientCapabilities: {}`), so a tool that asks for elicitation or sampling shows what it asked
+for and stops there.
+
+**The token.** It is sent in `AuthHeader` (`Authorization` when unset). In `Authorization`, a bare token gets
+`Bearer ` in front; anything that already has a scheme is sent as typed. A 401 (endpoint-level
+`RequireAuthorization()`) shows as "the token is missing or invalid"; a tool refused by `[Authorize]` shows the
+server's JSON-RPC error. With the default `GatedPrimitives = Show` every gated primitive is on the page, so
+whatever the token may call can be tried. On screen the request shows the scheme, not the token; Copy as curl
+includes it. The page's CSP allows no inline or third-party script, which is what keeps an injected script from
+reading a stored token.
+
+**Side effects.** MCP tools change things more often than a typical REST operation, and Send calls them for real.
+Its colour follows the tool's annotations: the accent for read-only tools, amber for "modifies data", red for
+destructive tools and for tools with no annotations (the spec's defaults assume the worst), with a line saying so.
+Use `ReadOnlyOnly` for docs in front of a real system.
+
+**Where there's no button.** On a static export (a file can't call the server), for a stdio server, when the MCP
+endpoint is on another origin (it answers no CORS preflight, and the page's `connect-src` is `'self'`), and when the
+server is `SessionMode = Stateful`, which refuses the stateless shape (`StatefulForInitializeClients` works). The
+last two log a warning at startup.
+
 ## Authorization
 
 Like OpenAPI docs, the page documents everything the server offers. A tool, prompt or resource gated with
@@ -191,7 +251,8 @@ inherent to a page opened in a browser:
 access share a cached build and get 304s.
 
 The sample signs in with a demo cookie (`/demo/sign-in?roles=admin,finance`, `/demo/sign-out`). It makes a
-difference with `GatedPrimitives = Hide`, which the sample leaves commented out.
+difference with `GatedPrimitives = Hide`, which the sample leaves commented out. Its try-it console takes a demo
+bearer token that is simply the roles it grants: type `admin` and `refund_order` succeeds.
 
 ## Troubleshooting
 
@@ -200,6 +261,8 @@ difference with `GatedPrimitives = Hide`, which the sample leaves commented out.
 | App stops right after starting, critical log about `McpEndpoint`; docs requests fail with the same message | The configured path matches no `MapMcp` route. | Fix the path, or remove `McpEndpoint` to use the discovered one. |
 | Warning: MCP endpoint requires authorization but the docs page doesn't | The page publishes the whole surface to anyone. | Add `.RequireAuthorization()` to `MapMcpDocs`, or accept it. |
 | Page shows fewer tools than `tools/list` | With `GatedPrimitives = Hide`, filtering uses the browser's identity (usually a cookie), not your MCP token; or the server uses a custom `ListToolsHandler`. | Sign in in the browser, or keep the default `Show`; custom handlers aren't visible to the page. |
+| No "Try it" button | `EnableTryIt()` isn't called; the server is `Stateful` or the endpoint is an absolute URL on another origin (both logged at startup); the tool isn't read-only and `ReadOnlyOnly` is on; or it's a static export. | See [Try it](#try-it). |
+| Try it says the token is missing or invalid | The endpoint answered 401: no token, a wrong one, or one sent in the wrong header. | Paste the token (`Bearer ` is added in `Authorization`), or set `AuthHeader` to the header your server reads. |
 | Connect snippets show the wrong URL behind a proxy | `PathBase` or host differs from what the browser sees. | Set `McpEndpoint` to the public URL. |
 | Page is blank, console shows CSP errors | Your own CSP header replaced ours (an existing one is never overwritten). | Allow `script-src 'self'; style-src 'self'; img-src 'self' data: https:` for the docs path. |
 | Icon doesn't show | Only `https:` and `data:image/` icons are used. | Serve the icon over https or inline it. |
@@ -210,7 +273,8 @@ difference with `GatedPrimitives = Hide`, which the sample leaves commented out.
 
 Mostly not a "never": this is where the project stands today, and much of it may change.
 
-- **Call anything.** For now it's a read-only page: no "try it", no credentials entered in the browser. A "try it" mode may come later.
+- **Answer a server that asks for input.** The try-it console can't fill in elicitation or sampling requests yet, and
+  doesn't call `Stateful` servers. Schema-driven forms for tool arguments may come too; for now it's a JSON editor.
 - **Hide the page by environment.** Map it only where you want it; there's no `IsDevelopment()` switch yet.
 - **Show dynamic servers.** Primitives created by a custom `ListToolsHandler` or list filters aren't visible; only what's registered, filtered by `[Authorize]`. Hard to solve in general, but I may find a way.
 - **Run custom HTML or script.** Toolbar items are links, `AdditionalCss` is CSS; the CSP stays strict. This one is on purpose and likely to stay.
@@ -282,6 +346,7 @@ runs the tests weekly against the newest MCP SDK. Actions are pinned by commit S
 ```
 src/Hlibz.McpDocs.AspNetCore/
   McpDocsOptions.cs                          options, [McpDocsGroup], grouping strategies
+  McpDocsTryItOptions.cs                     try-it console settings, when it can't run
   McpDocsCatalog.cs                          catalog.json from McpServerOptions collections
   McpDocsAuthorization.cs                    [Authorize] evaluation, mirrors the SDK's list filters
   McpDocsEndpointRouteBuilderExtensions.cs   MapMcpDocs: page, catalog, exports, _assets/*
@@ -291,7 +356,7 @@ src/Hlibz.McpDocs.AspNetCore/
   McpDocsTheme.cs                            theme.css from the options, value validation
   McpDocsQuality.cs                          description checks
   Assets/index.html, app.css, print.css, app.js   embedded UI (vanilla JS, no deps, no inline script)
-samples/Sample.McpServer/                    13 tools, 3 prompts, 2 resources, 2 templates; demo cookie sign-in
+samples/Sample.McpServer/                    13 tools, 3 prompts, 2 resources, 2 templates; demo cookie sign-in and bearer token
 ```
 
 ## License

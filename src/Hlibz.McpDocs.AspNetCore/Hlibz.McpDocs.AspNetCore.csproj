@@ -9,7 +9,7 @@
   <PropertyGroup Label="NuGet metadata">
     <PackageId>Hlibz.McpDocs.AspNetCore</PackageId>
     <Authors>Hlib Zinchenko</Authors>
-    <Description>Read-only, ReDoc-style documentation page for MCP servers hosted in ASP.NET Core.</Description>
+    <Description>ReDoc-style documentation page for MCP servers hosted in ASP.NET Core, with an optional try-it console.</Description>
     <PackageTags>mcp;model-context-protocol;aspnetcore;docs;documentation</PackageTags>
     <PackageProjectUrl>https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore</PackageProjectUrl>
     <RepositoryUrl>https://github.com/hlib-zinchenko/Hlibz.McpDocs.AspNetCore</RepositoryUrl>

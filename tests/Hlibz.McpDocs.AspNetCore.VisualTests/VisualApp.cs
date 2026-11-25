@@ -16,7 +16,7 @@ internal sealed class VisualApp : IAsyncDisposable
     private WebApplication _app = null!;
     public string BaseUrl { get; private set; } = "";
 
-    public static async Task<VisualApp> StartAsync(Action<IMcpServerBuilder>? server = null, Action<McpDocsOptions>? docs = null)
+    public static async Task<VisualApp> StartAsync(Action<IMcpServerBuilder>? server = null, Action<McpDocsOptions>? docs = null, Action<IEndpointConventionBuilder>? mcpEndpoint = null)
     {
         WebApplicationBuilder builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -26,7 +26,8 @@ internal sealed class VisualApp : IAsyncDisposable
         server?.Invoke(mcp);
 
         WebApplication app = builder.Build();
-        app.MapMcp("/mcp");
+        IEndpointConventionBuilder mcpRoute = app.MapMcp("/mcp");
+        mcpEndpoint?.Invoke(mcpRoute);
         app.MapMcpDocs("/mcp-docs", o => { o.AddToolbarItem("GitHub", "https://example.com"); docs?.Invoke(o); });
         await app.StartAsync();
         return new VisualApp { _app = app, BaseUrl = app.Urls.First() };

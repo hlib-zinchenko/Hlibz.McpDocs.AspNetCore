@@ -1,4 +1,4 @@
-/* Hlibz.McpDocs — read-only docs page for MCP servers. No dependencies. Served as a file, or inlined by a static
+/* Hlibz.McpDocs — docs page for MCP servers, with an optional try-it console. No dependencies. Served as a file, or inlined by a static
    export under a CSP that allows it by hash. */
 (function () {
   'use strict';
@@ -135,7 +135,7 @@
   }
   // A sample panel: foldable JSON, Copy, and one Collapse all / Expand all toggle when there is
   // something below the top level to fold. Collapse all keeps the top level open.
-  function panelBlock(title, value) {
+  function panelBlock(title, value, extra) {
     var text = JSON.stringify(value, null, 2), pre = jsonView(value);
     var nested = function () { return pre.querySelectorAll('.j-fold .j-fold'); };
     var all = null;
@@ -152,7 +152,7 @@
       pre.addEventListener('click', sync);
     }
     return [el('div', { class: 'panel-title' }, el('span', { text: title }),
-      el('span', { class: 'panel-actions' }, all, copyButton(function () { return text; }))), pre];
+      el('span', { class: 'panel-actions' }, extra, all, copyButton(function () { return text; }))), pre];
   }
 
   var ICON_SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
@@ -680,7 +680,7 @@
       metaBlock(t, SHOW_META));
 
     var args = example(t.inputSchema || {}, t.inputSchema || {}, 0, ['#']);
-    var right = el('div', { class: 'r' }, panelBlock('Request', rpc('tools/call', { name: t.name, arguments: args || {} })));
+    var right = el('div', { class: 'r' }, panelBlock('Request', rpc('tools/call', { name: t.name, arguments: args || {} }), tryButton(entry, 'tool')));
     if (t.outputSchema) {
       var out = example(t.outputSchema, t.outputSchema, 0, ['#']);
       append(right, panelBlock('Response', { jsonrpc: '2.0', id: 1, result: { content: [{ type: 'text', text: JSON.stringify(out) }], structuredContent: out } }));
@@ -710,7 +710,7 @@
       })) : el('p', { class: 'none', text: 'No arguments.' }),
       metaBlock(p, SHOW_META));
     var ex = {}; args.forEach(function (a) { ex[a.name] = 'string'; });
-    var right = el('div', { class: 'r' }, panelBlock('Request', rpc('prompts/get', { name: p.name, arguments: ex })));
+    var right = el('div', { class: 'r' }, panelBlock('Request', rpc('prompts/get', { name: p.name, arguments: ex }), tryButton(entry, 'prompt')));
     return el('section', { class: 'row', id: entry._id, 'data-nav': entry._id }, left, right);
   }
 
@@ -757,7 +757,7 @@
           v.required ? el('span', { class: 'req', text: 'required' }) : el('span', { class: 'opt', text: 'optional' })));
       }))] : null,
       metaBlock(res, SHOW_META));
-    var right = el('div', { class: 'r' }, panelBlock('Request', rpc('resources/read', { uri: templated ? uriExample(addr) : addr })));
+    var right = el('div', { class: 'r' }, panelBlock('Request', rpc('resources/read', { uri: templated ? uriExample(addr) : addr }), tryButton(entry, templated ? 'template' : 'resource')));
     return el('section', { class: 'row', id: entry._id, 'data-nav': entry._id }, left, right);
   }
 
@@ -786,6 +786,455 @@
 
   function heading(id, label, count) {
     return el('div', { class: 'row heading', id: id }, el('div', { class: 'l' }, el('h2', { class: 'section', text: label + ' · ' + count })), el('div', { class: 'r' }));
+  }
+
+  // ---------------------------------------------------------------- try it
+  // A console that sends one request to the MCP endpoint from the viewer's browser and shows the answer. Stateless
+  // Streamable HTTP (protocol 2026-07-28): no initialize and no session, so one POST is the whole call. The server
+  // answers with SSE (or JSON); three kinds of failure come back: an HTTP status (auth, bad headers), a JSON-RPC
+  // error, and a tool result with isError.
+  var TRY = null; // the console's settings when it can run on this page, else null
+  var PROTOCOL = '2026-07-28';
+
+  function tryItConfig(d) {
+    var t = d.tryIt;
+    if (!t || typeof t !== 'object' || t.unavailable || d.static || d.stdio) return null;
+    var url;
+    try { url = new URL(d.mcpEndpoint || '/mcp', location.href); } catch (e) { return null; }
+    // The endpoint answers no CORS preflight, and the page's connect-src is 'self'.
+    if (url.origin !== location.origin) return null;
+    return {
+      url: url.href, header: d.authHeader || 'Authorization', placeholder: d.authPlaceholder || '', hint: d.authHint,
+      storage: t.credentialStorage, lifetime: typeof t.credentialLifetime === 'number' ? t.credentialLifetime : 0,
+      cookies: t.sendCookies !== false, readOnlyOnly: t.readOnlyOnly === true, key: 'mcp-docs-token:' + url.pathname
+    };
+  }
+
+  // The token: one for the page, kept in memory unless the site chose sessionStorage or localStorage. Stored as
+  // { expires, token }, read again on every open, so a change in another tab shows up here.
+  var token = '', storageBroken = false;
+  function tokenStore() {
+    try { return TRY.storage === 'local' ? localStorage : TRY.storage === 'session' ? sessionStorage : null; } catch (e) { return null; }
+  }
+  function loadToken() {
+    var s = tokenStore();
+    if (!s || storageBroken) return;
+    var saved = null;
+    try { saved = JSON.parse(s.getItem(TRY.key) || 'null'); } catch (e) { saved = null; }
+    if (!saved || typeof saved.token !== 'string') { token = ''; return; }
+    if (typeof saved.expires === 'number' && saved.expires <= Date.now()) { forgetToken(); return; }
+    token = saved.token;
+  }
+  // Every change restarts the lifetime: it runs from when the viewer last typed.
+  function saveToken() {
+    var s = tokenStore();
+    if (!s) return;
+    try {
+      if (token) s.setItem(TRY.key, JSON.stringify({ expires: TRY.lifetime ? Date.now() + TRY.lifetime * 1000 : null, token: token }));
+      else s.removeItem(TRY.key);
+    } catch (e) { storageBroken = true; } // full or blocked: memory only from here on
+  }
+  function forgetToken() {
+    token = '';
+    var s = tokenStore();
+    if (s) try { s.removeItem(TRY.key); } catch (e) { /* nothing to remove */ }
+  }
+  function describeLifetime(sec) {
+    var units = [[86400, 'day'], [3600, 'hour'], [60, 'minute'], [1, 'second']];
+    for (var i = 0; i < units.length; i++) {
+      if (sec >= units[i][0] && sec % units[i][0] === 0) { var n = sec / units[i][0]; return n + ' ' + units[i][1] + (n === 1 ? '' : 's'); }
+    }
+    return sec + ' seconds';
+  }
+  // A bare token in Authorization gets the Bearer scheme; anything with a scheme, or another header, goes as typed.
+  function authValue() {
+    var v = token.trim();
+    if (!v) return null;
+    return TRY.header.toLowerCase() === 'authorization' && !/^\S+\s+\S/.test(v) ? 'Bearer ' + v : v;
+  }
+
+  // Header values (SEP-2243): printable ASCII as is; anything else, or a value with outer spaces or that looks
+  // encoded already, as =?base64?…?= of its UTF-8 bytes.
+  function headerValue(v) {
+    v = String(v);
+    if (/^[\x20-\x7e]*$/.test(v) && v.trim() === v && !/^=\?base64\?.*\?=$/i.test(v)) return v;
+    var bytes = new TextEncoder().encode(v), bin = '';
+    for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return '=?base64?' + btoa(bin) + '?=';
+  }
+  // Parameters marked [McpHeader] carry x-mcp-header in the input schema; their value is mirrored into
+  // Mcp-Param-{name}, which the server checks against the arguments.
+  function paramHeaders(schema, args) {
+    var out = {};
+    function walk(raw, value, depth) {
+      if (depth > 8 || !value || typeof value !== 'object' || Array.isArray(value)) return;
+      var s = resolve(single(raw || {}, schema), schema), props = s.properties || {};
+      Object.keys(props).forEach(function (k) {
+        var p = resolve(single(props[k], schema), schema), name = props[k]['x-mcp-header'] || p['x-mcp-header'], v = value[k];
+        if (typeof name === 'string' && name && v != null && typeof v !== 'object') out['Mcp-Param-' + name] = headerValue(v);
+        else walk(props[k], v, depth + 1);
+      });
+    }
+    walk(schema || {}, args, 0);
+    return out;
+  }
+
+  // RFC 6570 expansion, for resource templates (levels 1-4: operators, :n prefixes; explode is treated as plain).
+  function expandUri(template, values) {
+    return String(template).replace(/\{([^}]*)\}/g, function (_, body) {
+      var op = URI_OPS.hasOwnProperty(body.charAt(0)) && body.charAt(0) ? body.charAt(0) : '';
+      var named = op === ';' || op === '?' || op === '&', reserved = op === '+' || op === '#', parts = [];
+      body.slice(op.length).split(',').forEach(function (spec) {
+        var m = /^([^:*]+)(?::(\d+)|\*)?$/.exec(spec.trim());
+        if (!m) return;
+        var v = values[m[1].trim()];
+        if (v == null || v === '') return;
+        v = String(v);
+        if (m[2]) v = v.slice(0, +m[2]);
+        var enc = reserved ? encodeURI(v).replace(/%25([0-9A-Fa-f]{2})/g, '%$1')
+          : encodeURIComponent(v).replace(/[!'()*]/g, function (c) { return '%' + c.charCodeAt(0).toString(16).toUpperCase(); });
+        parts.push(named ? m[1].trim() + '=' + enc : enc);
+      });
+      return parts.length ? URI_OPS[op][0] + parts.join(URI_OPS[op][1]) : '';
+    });
+  }
+
+  function buildRequest(method, params, name, extra) {
+    var body = { jsonrpc: '2.0', id: 1, method: method, params: Object.assign({}, params, { _meta: {
+      'io.modelcontextprotocol/protocolVersion': PROTOCOL,
+      'io.modelcontextprotocol/clientCapabilities': {},
+      'io.modelcontextprotocol/clientInfo': { name: 'mcp-docs-try-it', version: '1.0.0' }
+    } }) };
+    var headers = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream',
+      'MCP-Protocol-Version': PROTOCOL, 'Mcp-Method': method, 'Mcp-Name': headerValue(name) };
+    Object.keys(extra || {}).forEach(function (k) { headers[k] = extra[k]; });
+    var auth = authValue();
+    if (auth) headers[TRY.header] = auth;
+    return { headers: headers, body: body };
+  }
+  function curlOf(req) {
+    return ['curl -N -X POST ' + shellArg(TRY.url)].concat(Object.keys(req.headers).map(function (k) { return '-H ' + shellArg(k + ': ' + req.headers[k]); }))
+      .concat(['--data-raw ' + shellArg(JSON.stringify(req.body))]).join(' \\\n  ');
+  }
+  // What the Request fold shows: the token itself stays hidden on screen (Copy as curl has it).
+  function requestText(req) {
+    var auth = req.headers[TRY.header];
+    return 'POST ' + TRY.url + '\n' + Object.keys(req.headers).map(function (k) {
+      var v = req.headers[k];
+      if (k === TRY.header && auth) { var sp = v.indexOf(' '); v = (sp > 0 ? v.slice(0, sp + 1) : '') + '••••••'; }
+      return k + ': ' + v;
+    }).join('\n') + '\n\n' + JSON.stringify(req.body, null, 2);
+  }
+
+  // SSE: blocks separated by a blank line, data: lines joined. Notifications (progress, logs) come first, the
+  // answer is the message with our id.
+  function parseMessages(r, text) {
+    var ct = (r.headers.get('content-type') || '').toLowerCase(), out = [];
+    if (ct.indexOf('text/event-stream') >= 0) {
+      text.replace(/\r\n?/g, '\n').split(/\n\n+/).forEach(function (block) {
+        var data = block.split('\n').filter(function (l) { return l.slice(0, 5) === 'data:'; }).map(function (l) { return l.slice(5).replace(/^ /, ''); }).join('\n');
+        if (data) try { out.push(JSON.parse(data)); } catch (e) { /* not JSON: shown in the raw response */ }
+      });
+    } else if (ct.indexOf('json') >= 0) {
+      try { var j = JSON.parse(text); out = Array.isArray(j) ? j : [j]; } catch (e) { out = []; }
+    }
+    return out.filter(function (m) { return m && typeof m === 'object'; });
+  }
+
+  function banner(kind, text, extra) { return el('div', { class: 'ti-banner ' + kind, role: kind === 'danger' ? 'alert' : null }, el('span', { text: text }), extra); }
+  function subTitle(text) { return el('div', { class: 'ti-sub', text: text }); }
+  function base64Size(b64) { var s = String(b64).replace(/=+$/, ''); return Math.floor(s.length * 3 / 4); }
+  // Text that is JSON (tools often return it) folds like the samples; anything else stays as written.
+  function textBlock(text) {
+    var t = String(text == null ? '' : text), v;
+    if (/^\s*[{[]/.test(t)) { try { v = JSON.parse(t); return jsonView(v); } catch (e) { /* not JSON */ } }
+    return el('pre', { class: 'ti-text', text: t });
+  }
+  function blobNote(kind, mime, data) {
+    return el('p', { class: 'ti-none', text: kind + (mime ? ' · ' + mime : '') + (typeof data === 'string' ? ' · ' + fmtBytes(base64Size(data)) : '') });
+  }
+  function contentBlock(b) {
+    if (!b || typeof b !== 'object') return jsonView(b);
+    switch (b.type) {
+      case 'text': return textBlock(b.text);
+      case 'image':
+        return typeof b.data === 'string' && /^image\/(png|jpeg|gif|webp|svg\+xml)$/i.test(b.mimeType || '')
+          ? el('img', { class: 'ti-img', alt: 'Image returned by the server', src: 'data:' + b.mimeType + ';base64,' + b.data })
+          : blobNote('Image', b.mimeType, b.data);
+      case 'audio': return blobNote('Audio', b.mimeType, b.data);
+      case 'resource_link':
+        return el('div', { class: 'ti-link' }, el('span', { class: 'badge plain', text: 'Resource link' }), el('code', { text: b.uri }),
+          b.name ? el('span', { class: 'ti-none', text: b.title || b.name }) : null);
+      case 'resource': return resourceContents(b.resource || {});
+    }
+    return jsonView(b);
+  }
+  function resourceContents(c) {
+    return el('div', { class: 'ti-contents' },
+      el('div', { class: 'ti-link' }, el('code', { text: c.uri || '' }), c.mimeType ? el('span', { class: 'badge plain', text: c.mimeType }) : null),
+      typeof c.text === 'string' ? textBlock(c.text) : typeof c.blob === 'string' ? blobNote('Binary', c.mimeType, c.blob) : null);
+  }
+  var RESULT_VIEWS = {
+    tool: function (res) {
+      var parts = [];
+      if (res.isError) parts.push(banner('danger', 'The tool reported an error (isError: true).'));
+      (Array.isArray(res.content) ? res.content : []).forEach(function (b) { parts.push(contentBlock(b)); });
+      if (res.structuredContent !== undefined) parts.push(subTitle('structuredContent'), jsonView(res.structuredContent));
+      return parts.length ? parts : el('p', { class: 'ti-none', text: 'Empty result.' });
+    },
+    prompt: function (res) {
+      var msgs = Array.isArray(res.messages) ? res.messages : [];
+      return [res.description ? el('p', { class: 'ti-none', text: res.description }) : null,
+        msgs.length ? msgs.map(function (m) { return el('div', { class: 'ti-msg' }, el('div', { class: 'ti-role', text: m.role || 'message' }), contentBlock(m.content)); })
+          : el('p', { class: 'ti-none', text: 'No messages.' })];
+    },
+    resource: function (res) {
+      var c = Array.isArray(res.contents) ? res.contents : [];
+      return c.length ? c.map(resourceContents) : el('p', { class: 'ti-none', text: 'No contents.' });
+    }
+  };
+
+  // r: the fetch Response; ms: round trip. Everything the server sent stays one click away under Raw response.
+  function responseView(kind, r, text, ms) {
+    var msgs = parseMessages(r, text);
+    var answer = msgs.filter(function (m) { return m.id === 1 && (m.result !== undefined || m.error !== undefined); })[0]
+      || msgs.filter(function (m) { return m.error !== undefined; })[0];
+    var notes = msgs.filter(function (m) { return typeof m.method === 'string'; });
+    // Green: the call worked. Amber: HTTP was fine but the call failed (JSON-RPC error, isError). Red: HTTP failed.
+    var ok = r.ok && answer && answer.result !== undefined && !(answer.result && answer.result.isError);
+    var out = [el('div', { class: 'ti-status' }, el('span', { class: 'badge ' + (ok ? 'ok' : r.ok ? 'warn' : 'danger'), text: r.status + (r.statusText ? ' ' + r.statusText : '') }),
+      el('span', { text: Math.round(ms) + ' ms' }))];
+    var www = r.headers.get('www-authenticate');
+    if (r.status === 401) out.push(banner('danger', 'Unauthorized: the token is missing or invalid.', www ? el('code', { text: 'WWW-Authenticate: ' + www }) : null));
+    else if (r.status === 403) out.push(banner('danger', 'Forbidden: the server knows who you are, but this credential may not call it.'));
+    if (answer && answer.error) {
+      var e = answer.error;
+      out.push(banner('danger', 'JSON-RPC error' + (e.code != null ? ' ' + e.code : '') + ': ' + (e.message || 'no message')));
+      if (e.data !== undefined) out.push(jsonView(e.data));
+    } else if (answer) {
+      var res = answer.result;
+      if (res && typeof res.resultType === 'string' && res.resultType !== 'complete') {
+        out.push(banner('warn', 'The server asked for input the console can’t give (resultType: ' + res.resultType + ').'), jsonView(res));
+      } else out.push(RESULT_VIEWS[kind](res || {}));
+    } else if (r.status !== 401 && r.status !== 403) {
+      out.push(banner(r.ok ? 'warn' : 'danger', r.ok ? 'The response carried no answer to this request.' : 'The request failed with HTTP ' + r.status + '.'));
+    }
+    if (notes.length) out.push(el('details', { class: 'ti-fold' }, el('summary', { text: notes.length + (notes.length === 1 ? ' notification' : ' notifications') }), jsonView(notes)));
+    var head = r.status + ' ' + (r.statusText || '') + '\n' + ['content-type', 'www-authenticate'].map(function (h) { return r.headers.get(h) ? h + ': ' + r.headers.get(h) : null; }).filter(Boolean).join('\n');
+    out.push(el('details', { class: 'ti-fold' }, el('summary', { text: 'Raw response' }), el('pre', { class: 'code', text: head + '\n\n' + text })));
+    return out;
+  }
+
+  // ---- the dialog. One for the page; reopening a primitive picks up what was typed and the last response.
+  var tiDialog = null, tiCurrent = null, tiInflight = null, tiDrafts = {};
+
+  function ensureDialog() {
+    if (tiDialog) return tiDialog;
+    tiDialog = el('dialog', { class: 'ti', 'aria-labelledby': 'ti-title' });
+    tiDialog.addEventListener('keydown', function (e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); if (tiCurrent) tiCurrent.send(); }
+    });
+    tiDialog.addEventListener('close', function () {
+      if (tiDialog.open) return; // reopened since: the queued event is stale
+      if (tiInflight) { tiInflight.abort(); tiInflight = null; }
+      if (tiCurrent) { tiCurrent.save(); if (tiCurrent.opener && document.contains(tiCurrent.opener)) tiCurrent.opener.focus(); }
+    });
+    // A click on the backdrop lands on the dialog element itself.
+    tiDialog.addEventListener('click', function (e) { if (e.target === tiDialog) tiDialog.close(); });
+    document.body.appendChild(tiDialog);
+    return tiDialog;
+  }
+
+  function tiField(label, input, hint, required) {
+    return el('label', { class: 'ti-field' }, el('span', { class: 'ti-label' }, label, required ? el('span', { class: 'req', text: 'required' }) : null),
+      input, hint ? el('span', { class: 'ti-hint', text: hint }) : null);
+  }
+
+  function authSection() {
+    var input = el('input', { class: 'ti-input', type: 'password', autocomplete: 'off', spellcheck: 'false', id: 'ti-token',
+      placeholder: TRY.header.toLowerCase() === 'authorization' ? 'Token (Bearer is added)' : TRY.placeholder });
+    input.value = token;
+    var store = tokenStore(), note = null;
+    if (store) {
+      note = el('div', { class: 'ti-saved' }, el('span', { text: (TRY.storage === 'session' ? 'Saved for this tab' : 'Saved in this browser') +
+          (TRY.lifetime ? ' for ' + describeLifetime(TRY.lifetime) + ' after the last change' : '') + '.' }),
+        el('button', { type: 'button', class: 'btn', text: 'Forget', onclick: function () { forgetToken(); input.value = ''; input.dispatchEvent(new Event('input')); input.focus(); } }));
+    }
+    var show = el('button', { type: 'button', class: 'btn', 'aria-pressed': 'false', 'aria-controls': 'ti-token', text: 'Show', onclick: function () {
+      var on = input.type === 'password'; input.type = on ? 'text' : 'password'; show.textContent = on ? 'Hide' : 'Show'; show.setAttribute('aria-pressed', String(on));
+    } });
+    input.addEventListener('input', function () { token = input.value; saveToken(); if (tiCurrent) tiCurrent.preview(); });
+    return el('div', { class: 'ti-auth' },
+      tiField(TRY.header, el('div', { class: 'ti-row' }, input, show), null),
+      note,
+      FILTERS_GATED ? el('p', { class: 'ti-hint', text: 'The page lists what your browser session may see; the call goes out with this token (and your cookies), which decides what it may do.' }) : null,
+      TRY.hint ? mdEl('div', 'ti-hint', TRY.hint) : null);
+  }
+
+  // kind: tool | prompt | resource | template. Each builds its inputs and returns { focus, request() } where
+  // request() gives { method, params, name, headers } or throws an Error naming what to fix.
+  function toolForm(def, draft) {
+    var schema = def.inputSchema || {};
+    var initial = JSON.stringify(example(schema, schema, 0, ['#']) || {}, null, 2);
+    var area = el('textarea', { class: 'ti-input ti-json', spellcheck: 'false', rows: Math.min(18, Math.max(4, initial.split('\n').length + 1)), 'aria-label': 'Arguments (JSON)' });
+    area.value = draft ? draft.args : initial;
+    var reset = el('button', { type: 'button', class: 'btn', text: 'Reset', onclick: function () { area.value = initial; area.dispatchEvent(new Event('input')); } });
+    return {
+      nodes: [el('div', { class: 'ti-label' }, el('span', { text: 'Arguments' }), el('small', { text: 'JSON' }), reset), area],
+      focus: area,
+      draft: function () { return { args: area.value }; },
+      request: function () {
+        var args;
+        try { args = area.value.trim() ? JSON.parse(area.value) : {}; } catch (e) { throw new Error('Arguments are not valid JSON: ' + e.message); }
+        if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Arguments must be a JSON object.');
+        return { method: 'tools/call', params: { name: def.name, arguments: args }, name: def.name, headers: paramHeaders(schema, args) };
+      }
+    };
+  }
+  function fieldsForm(list, draft) { // list: [{ name, required, description }]
+    var inputs = {};
+    var nodes = list.map(function (a) {
+      var input = el('input', { class: 'ti-input', type: 'text', spellcheck: 'false', 'data-name': a.name });
+      input.value = draft && draft[a.name] != null ? draft[a.name] : '';
+      inputs[a.name] = input;
+      return tiField(a.name, input, a.description, a.required);
+    });
+    return {
+      nodes: nodes, inputs: inputs, first: list.length ? inputs[list[0].name] : null,
+      values: function () { var o = {}; list.forEach(function (a) { o[a.name] = inputs[a.name].value; }); return o; },
+      missing: function () { return list.filter(function (a) { return a.required && !inputs[a.name].value; }).map(function (a) { return a.name; }); }
+    };
+  }
+  function promptForm(def, draft) {
+    var f = fieldsForm((def.arguments || []).map(function (a) { return { name: a.name, required: a.required === true, description: a.description }; }), draft);
+    return {
+      nodes: f.nodes.length ? [el('div', { class: 'ti-label' }, 'Arguments')].concat(f.nodes) : el('p', { class: 'ti-none', text: 'No arguments.' }),
+      focus: f.first, draft: f.values,
+      request: function () {
+        var miss = f.missing();
+        if (miss.length) throw new Error('Fill in ' + miss.join(', ') + '.');
+        var v = f.values(), args = {};
+        Object.keys(v).forEach(function (k) { if (v[k] !== '') args[k] = v[k]; });
+        return { method: 'prompts/get', params: { name: def.name, arguments: args }, name: def.name };
+      }
+    };
+  }
+  function resourceForm(def, templated, draft) {
+    if (!templated) {
+      return { nodes: el('div', { class: 'ti-uri' }, el('span', { class: 'ti-label', text: 'URI' }), el('code', { text: def.uri })), focus: null, draft: function () { return {}; },
+        request: function () { return { method: 'resources/read', params: { uri: def.uri }, name: def.uri }; } };
+    }
+    var f = fieldsForm(uriVariables(def.uriTemplate), draft);
+    var uri = el('code');
+    function paint() { uri.textContent = expandUri(def.uriTemplate, f.values()); }
+    Object.keys(f.inputs).forEach(function (k) { f.inputs[k].addEventListener('input', paint); });
+    paint();
+    return {
+      nodes: [el('div', { class: 'ti-label' }, 'Variables')].concat(f.nodes, [el('div', { class: 'ti-uri' }, el('span', { class: 'ti-label', text: 'URI' }), uri)]),
+      focus: f.first, draft: f.values,
+      request: function () {
+        var miss = f.missing();
+        if (miss.length) throw new Error('Fill in ' + miss.join(', ') + '.');
+        var u = expandUri(def.uriTemplate, f.values());
+        return { method: 'resources/read', params: { uri: u }, name: u };
+      }
+    };
+  }
+
+  // Tools get a Send coloured by what they may do; prompts and resources are reads.
+  function sendLevel(kind, def) {
+    if (kind !== 'tool') return 'ok';
+    var l = risk(def).level;
+    return l === 'ok' ? 'ok' : l === 'warn' ? 'warn' : 'danger';
+  }
+  var SEND_NOTES = { warn: 'This tool may change data: Send calls it for real.', danger: 'This tool may make destructive changes (or doesn’t say it won’t): Send calls it for real.' };
+
+  function openTryIt(entry, kind, opener) {
+    loadToken();
+    var def = entry.definition, d = ensureDialog(), draft = tiDrafts[entry._id];
+    if (tiInflight) { tiInflight.abort(); tiInflight = null; }
+    var form = kind === 'tool' ? toolForm(def, draft && draft.form) : kind === 'prompt' ? promptForm(def, draft && draft.form)
+      : resourceForm(def, kind === 'template', draft && draft.form);
+    var level = sendLevel(kind, def);
+    var error = el('p', { class: 'ti-error', role: 'alert', hidden: true });
+    var response = el('div', { class: 'ti-response', 'aria-live': 'polite' });
+    if (draft && draft.response) append(response, draft.response);
+    var pre = el('pre', { class: 'code ti-request' });
+    var sendBtn = el('button', { type: 'button', class: 'ti-send ' + level, text: 'Send' });
+    var state = {
+      opener: opener,
+      build: function () {
+        var q = form.request();
+        return buildRequest(q.method, q.params, q.name, q.headers);
+      },
+      preview: function () {
+        try { pre.textContent = requestText(state.build()); error.hidden = true; }
+        catch (e) { pre.textContent = ''; }
+      },
+      save: function () {
+        tiDrafts[entry._id] = { form: form.draft(), response: response.childNodes.length && !response.querySelector('.ti-pending') ? [].slice.call(response.childNodes) : null };
+      },
+      send: function () {
+        var req;
+        try { req = state.build(); } catch (e) { error.textContent = e.message; error.hidden = false; return; }
+        error.hidden = true;
+        if (tiInflight) tiInflight.abort();
+        var ctl = new AbortController(), started = performance.now();
+        tiInflight = ctl;
+        sendBtn.disabled = true;
+        response.replaceChildren(el('p', { class: 'ti-none ti-pending', text: 'Sending…' }));
+        fetch(TRY.url, { method: 'POST', headers: req.headers, body: JSON.stringify(req.body), credentials: TRY.cookies ? 'same-origin' : 'omit', cache: 'no-store', signal: ctl.signal })
+          .then(function (r) { return r.text().then(function (text) { return [r, text]; }); })
+          .then(function (x) {
+            if (tiInflight !== ctl) return;
+            response.replaceChildren.apply(response, flat(responseView(kind === 'template' ? 'resource' : kind, x[0], x[1], performance.now() - started)));
+          }, function (e) {
+            if (tiInflight !== ctl) return;
+            response.replaceChildren(banner('danger', e && e.name === 'AbortError' ? 'Cancelled.' : 'The request didn’t complete: ' + (e && e.message ? e.message : e) + '. The server may be down, or a proxy refused it.'));
+          })
+          .then(function () { if (tiInflight === ctl) tiInflight = null; sendBtn.disabled = false; });
+      }
+    };
+    sendBtn.addEventListener('click', state.send);
+    var body = el('div', { class: 'ti-body' });
+    body.addEventListener('input', state.preview);
+    append(body, [
+      authSection(),
+      el('div', { class: 'ti-form' }, form.nodes),
+      error,
+      el('div', { class: 'ti-actions' }, sendBtn, el('span', { class: 'ti-keys', text: (/Mac|iP(hone|ad)/.test(navigator.platform) ? '⌘' : 'Ctrl') + '+Enter' }),
+        el('span', { class: 'ti-spacer' }),
+        el('button', { type: 'button', class: 'btn', text: 'Copy as curl', onclick: function (e) {
+          var b = e.currentTarget, req;
+          try { req = state.build(); } catch (err) { error.textContent = err.message; error.hidden = false; return; }
+          copyText(curlOf(req)).then(function (ok) { b.textContent = ok ? 'Copied' : 'Copy failed'; setTimeout(function () { b.textContent = 'Copy as curl'; }, 1400); });
+        } })),
+      SEND_NOTES[level] ? el('p', { class: 'ti-note ' + level, text: SEND_NOTES[level] }) : null,
+      el('details', { class: 'ti-fold' }, el('summary', { text: 'Request' }), pre),
+      el('h3', { class: 'ti-h', text: 'Response' }),
+      response
+    ]);
+    var KIND_LABELS = { tool: 'Tool', prompt: 'Prompt', resource: 'Resource', template: 'Resource template' };
+    d.replaceChildren(
+      el('div', { class: 'ti-head' },
+        el('span', { class: 'badge plain', text: KIND_LABELS[kind] }),
+        el('h2', { id: 'ti-title', text: def.name }),
+        el('button', { type: 'button', class: 'ti-close', 'aria-label': 'Close', text: '×', onclick: function () { d.close(); } })),
+      body);
+    tiCurrent = state;
+    state.preview();
+    if (!d.open) d.showModal();
+    var focus = form.focus || (token ? sendBtn : d.querySelector('#ti-token'));
+    if (focus) focus.focus();
+  }
+  function flat(x) { var out = []; (function f(v) { if (Array.isArray(v)) v.forEach(f); else if (v != null && v !== false) out.push(v); })(x); return out; }
+
+  // The button beside a primitive's Request sample, or null when the console is off or the tool is left out.
+  function tryButton(entry, kind) {
+    if (!TRY) return null;
+    if (kind === 'tool' && TRY.readOnlyOnly && !(entry.definition.annotations && entry.definition.annotations.readOnlyHint === true)) return null;
+    return el('button', { class: 'btn try', type: 'button', text: 'Try it', 'aria-haspopup': 'dialog', 'aria-label': 'Try ' + entry.definition.name,
+      onclick: function (e) { openTryIt(entry, kind, e.currentTarget); } });
   }
 
   // ---------------------------------------------------------------- page
@@ -854,6 +1303,7 @@
     var groups = groupTools(tools);
     SHOW_META = d.showMeta === true;
     FILTERS_GATED = d.filtersGated === true;
+    TRY = tryItConfig(d);
     var title = d.title || server.title || server.name || 'MCP server';
     document.title = title;
     var fav = (typeof d.favicon === 'string' && d.favicon) || iconUrl(server.icons);
@@ -962,7 +1412,7 @@
       toolbar(server, d),
       el('div', { class: 'search' }, search, el('kbd', { text: '/' })),
       nav,
-      el('div', { class: 'side-foot' }, d.static ? 'Read-only docs' : [el('a', { href: 'catalog.json', text: 'catalog.json' }), ' · read-only docs']));
+      el('div', { class: 'side-foot' }, d.static ? 'Read-only docs' : [el('a', { href: 'catalog.json', text: 'catalog.json' }), TRY ? null : ' · read-only docs']));
 
     // --- content
     var counts = [

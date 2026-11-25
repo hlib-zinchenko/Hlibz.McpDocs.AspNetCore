@@ -67,6 +67,18 @@ internal static class McpDocsEndpointDiscovery
                              : " ([Authorize] primitives are listed too, with what they require; GatedPrimitives = Hide filters them per viewer)."));
         }
 
+        if (docs.TryIt is not null)
+        {
+            if (McpDocsTryItOptions.Unavailable(services) is { } reason)
+            {
+                warnings.Add($"EnableTryIt has no effect: {reason} Use SessionMode = Stateless (the default) or StatefulForInitializeClients.");
+            }
+            else if (!endpoint.StartsWith('/'))
+            {
+                warnings.Add($"The MCP endpoint is the absolute URL '{endpoint}'. The try-it console only calls an endpoint on the docs page's own origin, so it is hidden when that URL points elsewhere.");
+            }
+        }
+
         return new(endpoint, errors, warnings);
     }
 

@@ -28,7 +28,7 @@ public static class McpDocsEndpointRouteBuilderExtensions
     private const int MaxCachedExports = 256;
 
     /// <summary>
-    /// Maps a read-only docs page for the MCP server registered in DI:
+    /// Maps a docs page for the MCP server registered in DI:
     /// <c>{pattern}/</c> (page), <c>{pattern}/catalog.json</c> and <c>{pattern}/_assets/*</c>.
     /// Returns the route group so <c>.RequireAuthorization()</c> etc. cover the page, the JSON and the assets.
     /// </summary>
@@ -61,7 +61,7 @@ public static class McpDocsEndpointRouteBuilderExtensions
             McpServerOptions server = ctx.RequestServices.GetRequiredService<IOptions<McpServerOptions>>().Value;
             string found = McpDocsEndpointDiscovery.Resolve(ctx.RequestServices, docs, basePath).Endpoint;
             string endpoint = found.StartsWith('/') ? pb + found : found;
-            return new McpDocsCatalog(server, docs, endpoint, pb);
+            return new McpDocsCatalog(server, docs, endpoint, pb, McpDocsTryItOptions.Unavailable(ctx.RequestServices));
         });
 
         RouteGroupBuilder group = endpoints.MapGroup(pattern);

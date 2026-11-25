@@ -9,8 +9,8 @@ using ModelContextProtocol.Server;
 namespace Sample.McpServer.Tools;
 
 /// <summary>
-/// Gated with [Authorize]: hidden from tools/list and from the docs page unless the caller has the role.
-/// Sign in at /demo/sign-in?roles=admin to see them.
+/// Gated with [Authorize]: hidden from tools/list and refused unless the caller has the role. The docs page lists them
+/// for everyone with a lock badge (GatedPrimitives = Show). Call them with the bearer token "admin" (see README.md).
 /// </summary>
 [McpServerToolType]
 [McpDocsGroup("Admin")]

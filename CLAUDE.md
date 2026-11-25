@@ -4,8 +4,10 @@ Guidance for Claude Code when working in this repository.
 
 ## What this is
 
-One NuGet package, `src/Hlibz.McpDocs.AspNetCore`: a read-only, ReDoc-style documentation page for
-MCP servers hosted in ASP.NET Core (`MapMcpDocs`). It builds `catalog.json` from what the MCP SDK
+One NuGet package, `src/Hlibz.McpDocs.AspNetCore`: a ReDoc-style documentation page for
+MCP servers hosted in ASP.NET Core (`MapMcpDocs`), with an opt-in try-it console (`EnableTryIt`) that calls
+the MCP endpoint from the browser in the stateless `2026-07-28` shape (one POST, SSE answer). `TryItTests`
+posts that exact shape to a real endpoint, so an SDK change to the wire format fails there first. It builds `catalog.json` from what the MCP SDK
 already registered (`McpServerOptions` collections), lists `[Authorize]`d primitives with their requirements
 (`GatedPrimitives = Show`, the default) or per viewer (`Hide`), and serves the page, the catalog and
 exports (`catalog.md`, `llms.txt`, `server.json`, a self-contained `docs.html`). The README's
@@ -18,7 +20,8 @@ Development section maps each source file to what it does; keep that map in step
   so the library depends on the range `[2.3.1,3.0.0)` (`VersionOverride` in its csproj). The tests
   and the sample run the central version in `Directory.Packages.props`; `sdk-latest.yml` runs the
   tests weekly against the newest stable 2.x. Lifting the 3.0 cap is a manual decision.
-- `samples/Sample.McpServer`: tools, prompts, resources and a demo cookie sign-in, net10.0 only.
+- `samples/Sample.McpServer`: tools, prompts, resources, a demo cookie sign-in and a demo bearer token
+  (the token is the roles it grants), net10.0 only.
 
 ## Requires
 
