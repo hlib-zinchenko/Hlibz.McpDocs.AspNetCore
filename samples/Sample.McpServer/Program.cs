@@ -45,6 +45,27 @@ builder.Services
     .WithResourcesFromAssembly()
     .AddAuthorizationFilters(); // hides [Authorize]d primitives from tools/list etc. — the docs page applies the same rules
 
+// What get_order and cancel_order can fail with, in their _meta: the page lists them under Errors, with what to
+// do about each. MCP has no error schema; a failed call is a result with isError and text content.
+builder.Services.PostConfigure<McpServerOptions>(o =>
+{
+    McpDocsToolError notFound = new("order_not_found")
+    {
+        Description = "No order has the id.",
+        Guidance = "Call `search_orders` to find the order's id, then try again.",
+    };
+    McpDocsToolErrors.Describe(o.ToolCollection!.First(t => t.ProtocolTool.Name == "get_order"), [notFound]);
+    McpDocsToolErrors.Describe(o.ToolCollection!.First(t => t.ProtocolTool.Name == "cancel_order"),
+    [
+        notFound,
+        new McpDocsToolError("order_shipped")
+        {
+            Description = "The order has shipped, so it can't be cancelled.",
+            Guidance = "Don't retry. Offer the user a refund instead (`refund_order`, admins only).",
+        },
+    ]);
+});
+
 WebApplication app = builder.Build();
 
 app.MapMcp("/mcp");

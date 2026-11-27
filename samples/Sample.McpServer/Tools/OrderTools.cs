@@ -46,13 +46,14 @@ public class OrderTools
 {
     [McpServerTool(IconSource = OrderIcons.Get, Name = "get_order", Title = "Get order", ReadOnly = true, Idempotent = true, OpenWorld = false, UseStructuredContent = true)]
     [Description("Returns a single order by its id. Output is structured (has an output schema).\n\n" +
-                 "Unknown ids fail with `isError: true` and a text message (try `ORD-404`). MCP has no schema for errors.")]
+                 "Unknown ids fail with `isError: true` and a text message (try `ORD-404`). MCP has no schema for errors; " +
+                 "Program.cs lists this tool's in its `_meta` (McpDocsToolErrors), which the page shows.")]
     public Order GetOrder([Description("Order id, e.g. 'ORD-1001'")] string orderId) =>
         orderId.StartsWith("ORD-", StringComparison.Ordinal) && orderId != "ORD-404"
             ? new(orderId, OrderStatus.Paid, 42.50m, "EUR", DateTimeOffset.UtcNow.AddDays(-2),
                 [new OrderLine("SKU-RED-MUG", 2), new OrderLine("SKU-TEA-100G", 1)])
             // McpException → a tool result with isError: true; its message reaches the client as text content.
-            : throw new McpException($"Order '{orderId}' not found.");
+            : throw new McpException($"order_not_found: Order '{orderId}' not found. Call search_orders to find its id.");
 
     [McpServerTool(IconSource = OrderIcons.Search, Name = "search_orders", Title = "Search orders", ReadOnly = true, Idempotent = true, UseStructuredContent = true)]
     [Description("Searches orders by status and date range. Supports paging.\n\n" +

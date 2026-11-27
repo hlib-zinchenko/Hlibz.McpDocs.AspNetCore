@@ -131,6 +131,32 @@ Next to `catalog.json`, the same catalog is rendered as:
 All three sit in the route group, so `.RequireAuthorization()` covers them and `[Authorize]` filtering applies.
 No `.well-known` server card: the proposal is still a draft and its path and shape differ between drafts.
 
+## Tool errors
+
+MCP declares no error shape: a failed call is a normal result with `isError: true` and (usually text)
+content, so a tool's definition says nothing about which failures to expect or what to do about them. List
+them in the tool's `_meta` under `hlibz/errors` (`McpDocsToolErrors.MetaKey`), and the page shows them on the
+tool under **Errors**, `catalog.json` as the entry's `errors`, and `catalog.md` as a table, whether or not
+`ShowMeta` is on:
+
+```csharp
+builder.Services.PostConfigure<McpServerOptions>(o => McpDocsToolErrors.Describe(
+    o.ToolCollection!.First(t => t.ProtocolTool.Name == "cancel_order"),
+    [
+        new McpDocsToolError("order_shipped")
+        {
+            Description = "The order has shipped, so it can't be cancelled.",
+            Guidance = "Don't retry. Offer the user a refund instead (`refund_order`).",
+        },
+    ]));
+```
+
+Each entry is `{ "code": string, "description"?: string, "guidance"?: string }`; a server can write the
+`_meta` itself (any client can read it there), and entries without a code are skipped. The code is what a
+client branches on, the description what the error means, and the guidance what a model should try next,
+in terms of the server's tools; `{placeholders}` in it (values the error result fills in) show as code.
+The errors are part of the contract, so `McpDocsSnapshot` keeps them.
+
 ## Static page
 
 The page can be saved as one HTML file: styles, script and catalog inline, nothing fetched, so it also works
@@ -303,7 +329,7 @@ nothing. Pass `includePresentation: true` for the whole catalog the page is buil
 ## Compatibility
 
 - Targets `net10.0` and `net11.0`. CI builds and tests on both runtimes.
-- Built against `ModelContextProtocol.AspNetCore` 2.3.1 and accepts any 2.x. Authorization mirrors that
+- Built against `ModelContextProtocol.AspNetCore` 2.4.0 and accepts any 2.x. Authorization mirrors that
   version's `AddAuthorizationFilters()`; a test compares what the page shows each viewer under
   `GatedPrimitives = Hide` with what the server lists them, and a weekly CI job runs it against the newest stable SDK. 3.0 and later are outside
   the range until they've been checked.
@@ -359,6 +385,7 @@ src/Hlibz.McpDocs.AspNetCore/
   McpDocsEndpointDiscovery.cs                finds the MapMcp route, startup checks
   McpDocsExports.cs                          catalog.md, llms.txt, server.json
   McpDocsSnapshot.cs                         public catalog snapshot for tests
+  McpDocsToolErrors.cs                       a tool's errors in its _meta (hlibz/errors), read for the catalog
   McpDocsTheme.cs                            theme.css from the options, value validation
   McpDocsQuality.cs                          description checks
   Assets/index.html, app.css, print.css, app.js   embedded UI (vanilla JS, no deps, no inline script)

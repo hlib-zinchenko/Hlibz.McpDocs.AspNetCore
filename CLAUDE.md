@@ -17,9 +17,13 @@ Development section maps each source file to what it does; keep that map in step
   dependencies, no inline script. Embedded as `McpDocs.<file>`; `.github/scripts/check-package.sh`
   fails the pack if one stops being embedded, for each target framework.
 - `[Authorize]` filtering and endpoint discovery mirror ModelContextProtocol.AspNetCore internals,
-  so the library depends on the range `[2.3.1,3.0.0)` (`VersionOverride` in its csproj). The tests
+  so the library depends on the range `[2.4.0,3.0.0)` (`VersionOverride` in its csproj). The tests
   and the sample run the central version in `Directory.Packages.props`; `sdk-latest.yml` runs the
   tests weekly against the newest stable 2.x. Lifting the 3.0 cap is a manual decision.
+- A tool's errors are `_meta["hlibz/errors"]` (`McpDocsToolErrors`: `[{ code, description?, guidance? }]`, written
+  by the server, malformed entries skipped): the catalog lists them as the tool entry's `errors` whatever
+  `ShowMeta` says, and keeps them in `McpDocsSnapshot` (contract); the page shows an Errors block and leaves the
+  key out of the raw `_meta` view; `catalog.md` has a table. `ToolErrorTests`, and a behaviour test for the page.
 - `samples/Sample.McpServer`: tools, prompts, resources, a demo cookie sign-in and a demo bearer token
   (the token is the roles it grants), net10.0 only.
 

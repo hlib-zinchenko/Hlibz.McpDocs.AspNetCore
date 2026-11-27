@@ -164,7 +164,7 @@ internal sealed class McpDocsCatalog
             WriteTryIt(w);
             w.WriteEndObject();
 
-            // Every entry: { group? (tools only), definition, authorization? }
+            // Every entry: { definition, group? and errors? (tools only), authorization?, issues? }
             void Section(string name, Kind kind)
             {
                 w.WriteStartArray(name);
@@ -196,6 +196,13 @@ internal sealed class McpDocsCatalog
                     if (item.Primitive is McpServerTool tool)
                     {
                         WriteString(w, "group", _docs.ToolGroup(tool));
+
+                        // Part of the contract, so listed whether or not _meta is shown.
+                        if (McpDocsToolErrors.Read(tool.ProtocolTool) is { } errors)
+                        {
+                            w.WritePropertyName("errors");
+                            errors.WriteTo(w);
+                        }
                     }
 
                     if (item.Gated)

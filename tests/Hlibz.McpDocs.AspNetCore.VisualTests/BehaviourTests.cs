@@ -36,8 +36,8 @@ public class BehaviourTests : IAsyncLifetime
     public async ValueTask InitializeAsync()
     {
         _app = await VisualApp.StartAsync(
-            server: s => s.WithTools([Hostile_tool(), AllOf_tool()]).WithTools<RecursiveTools>(),
-            docs: o => { o.AuthHeader = "Authorization"; o.AuthHint = Hostile; });
+            server: s => s.WithTools([Hostile_tool(), AllOf_tool(), Failing_tool()]).WithTools<RecursiveTools>(),
+            docs: o => { o.AuthHeader = "Authorization"; o.AuthHint = Hostile; o.ShowMeta = true; });
         _pw = await Playwright.CreateAsync();
         _browser = await _pw.Chromium.LaunchAsync();
     }
@@ -74,6 +74,23 @@ public class BehaviourTests : IAsyncLifetime
               }
             }
             """).RootElement.Clone();
+        return tool;
+    }
+
+    // Errors in _meta (McpDocsToolErrors), next to other metadata.
+    private static McpServerTool Failing_tool()
+    {
+        McpServerTool tool = McpServerTool.Create((string id) => id, new()
+        {
+            Name = "rename_thing",
+            Description = "Renames a thing.",
+            Meta = new System.Text.Json.Nodes.JsonObject { ["owner"] = "team" },
+        });
+        McpDocsToolErrors.Describe(tool,
+        [
+            new McpDocsToolError("thing_not_found") { Guidance = "Call `list_things` to find the {thingId}." },
+            new McpDocsToolError("name_taken") { Description = "Another thing has the **name**.", Guidance = Hostile },
+        ]);
         return tool;
     }
 
@@ -123,6 +140,24 @@ public class BehaviourTests : IAsyncLifetime
         Assert.Contains("https://example.com/a?b=1&c=2", await Eval<string[]>(page, "[...document.querySelectorAll('main .md a')].map(a => a.href)"));
         Assert.True(await Eval<int>(page, "document.querySelectorAll('main .md ul > li').length") >= 2);
         Assert.Contains("<script>window.__xss=1</script>", await Eval<string>(page, "document.querySelector('main .md').textContent"));
+    }
+
+    [Fact]
+    public async Task Tool_errors_are_listed_with_guidance_and_left_out_of_the_metadata()
+    {
+        IPage page = await Open("#tool/rename_thing");
+
+        Assert.Equal(["thing_not_found", "name_taken"], await Eval<string[]>(page, In("tool/rename_thing", ".errors .prop-name") + ".map(e => e.textContent)"));
+        // Placeholders show as code, next to the guidance's own code spans.
+        Assert.Equal(["list_things", "{thingId}"], await Eval<string[]>(page, "[..." + In("tool/rename_thing", ".errors .prop")
+            + "[0].querySelectorAll('.guidance code')].map(e => e.textContent)"));
+        Assert.Equal("name", await Eval<string>(page, In("tool/rename_thing", ".errors .prop") + "[1].querySelector('.prop-desc strong').textContent"));
+        // The metadata view shows the rest of _meta; the errors are already above.
+        string meta = await Eval<string>(page, In("tool/rename_thing", ".l .json") + ".map(e => e.textContent).join('')");
+        Assert.Contains("owner", meta);
+        Assert.DoesNotContain("hlibz/errors", meta);
+        Assert.Contains("one of the errors listed", await Eval<string>(page, In("tool/rename_thing", ".r .panel-note") + ".map(e => e.textContent).join(' ')"));
+        Assert.False(await Eval<bool>(page, "'__xss' in window"));
     }
 
     [Fact]

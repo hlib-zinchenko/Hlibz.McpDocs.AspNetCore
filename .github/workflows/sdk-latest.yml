@@ -1,6 +1,6 @@
 name: Latest MCP SDK
 
-# The package is built against ModelContextProtocol.AspNetCore 2.3.1 but installs into apps on any newer
+# The package is built against ModelContextProtocol.AspNetCore 2.4.0 but installs into apps on any newer
 # version, and its [Authorize] filtering and endpoint discovery mirror that SDK's internals. This runs the
 # tests against the newest stable SDK, so a change there shows up here before a user reports it.
 on:

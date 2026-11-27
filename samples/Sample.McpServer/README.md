@@ -22,11 +22,11 @@ dotnet run --project samples/Sample.McpServer --launch-profile http
 
 | Name | Kind | Annotations | Needs |
 |---|---|---|---|
-| `get_order` | tool | read-only | nothing (try `ORD-404` for a tool error) |
+| `get_order` | tool | read-only | nothing (try `ORD-404` for a tool error; its errors are listed on the page) |
 | `search_orders` | tool | read-only | nothing |
 | `count_orders` | tool | read-only | nothing |
 | `create_order` | tool | modifies data | nothing |
-| `cancel_order` | tool | destructive | nothing |
+| `cancel_order` | tool | destructive | nothing (two errors listed, with guidance) |
 | `get_category_tree` | tool | read-only | nothing |
 | `update_prices` | tool | modifies data | nothing |
 | `apply_discount` | tool | modifies data | nothing |

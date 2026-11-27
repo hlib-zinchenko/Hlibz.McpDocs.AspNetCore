@@ -115,6 +115,37 @@ internal static class McpDocsExports
                 }
             }
         }
+
+        Errors(sb, entry);
+    }
+
+    // The errors McpDocsToolErrors lists; a column only when some entry has it.
+    private static void Errors(StringBuilder sb, JsonNode entry)
+    {
+        if (entry["errors"] is not JsonArray { Count: > 0 } errors)
+        {
+            return;
+        }
+
+        bool described = errors.Any(e => e?["description"] is not null);
+        bool guided = errors.Any(e => e?["guidance"] is not null);
+        sb.Append("\nErrors (`isError: true`):\n\n| Code |").Append(described ? " Description |" : "").Append(guided ? " Guidance |" : "")
+          .Append("\n|---|").Append(described ? "---|" : "").Append(guided ? "---|" : "").Append('\n');
+        foreach (JsonNode? e in errors)
+        {
+            sb.Append("| `").Append((string?)e!["code"]).Append("` |");
+            if (described)
+            {
+                sb.Append(' ').Append(Cell((string?)e["description"])).Append(" |");
+            }
+
+            if (guided)
+            {
+                sb.Append(' ').Append(Cell((string?)e["guidance"])).Append(" |");
+            }
+
+            sb.Append('\n');
+        }
     }
 
     private static void Prompt(StringBuilder sb, JsonNode d, JsonNode entry)

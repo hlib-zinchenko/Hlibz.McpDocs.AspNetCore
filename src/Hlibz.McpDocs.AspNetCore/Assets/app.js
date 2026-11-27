@@ -677,6 +677,7 @@
       el('h4', null, 'Parameters'),
       schemaView(t.inputSchema),
       t.outputSchema ? [el('h4', null, 'Result', el('small', { text: 'structuredContent' })), resultView(t.outputSchema)] : null,
+      errorsBlock(entry.errors),
       metaBlock(t, SHOW_META));
 
     var args = example(t.inputSchema || {}, t.inputSchema || {}, 0, ['#']);
@@ -688,7 +689,8 @@
       append(right, el('p', { class: 'panel-note', html: 'Returns <code>content</code> blocks (usually text). No output schema declared.' }));
     }
     // MCP declares no error shape: a failed call is a normal result with isError and (usually text) content.
-    append(right, el('p', { class: 'panel-note', html: 'On failure: <code>isError: true</code> with text <code>content</code>.' +
+    append(right, el('p', { class: 'panel-note', html: 'On failure: <code>isError: true</code> with text <code>content</code>' +
+      (entry.errors && entry.errors.length ? ', for one of the errors listed.' : '.') +
       (t.outputSchema ? ' The output schema does not cover errors.' : '') }));
     return el('section', { class: 'row', id: entry._id, 'data-nav': entry._id }, left, right);
   }
@@ -769,9 +771,27 @@
   function fmtTokens(n) { return n >= 10000 ? Math.round(n / 1000) + 'k' : n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n); }
   var HEAVY_TOKENS = 1000;
 
+  // The errors key is shown as the Errors block, so it is left out here.
   function metaBlock(def, show) {
-    if (!show || !def._meta || typeof def._meta !== 'object' || !Object.keys(def._meta).length) return null;
-    return [el('h4', null, 'Metadata', el('small', { text: '_meta' })), jsonView(def._meta)];
+    if (!show || !def._meta || typeof def._meta !== 'object') return null;
+    var meta = {};
+    Object.keys(def._meta).forEach(function (k) { if (k !== ERRORS_META_KEY) meta[k] = def._meta[k]; });
+    if (!Object.keys(meta).length) return null;
+    return [el('h4', null, 'Metadata', el('small', { text: '_meta' })), jsonView(meta)];
+  }
+
+  // A tool's errors (McpDocsToolErrors: _meta["hlibz/errors"], listed by the catalog as entry.errors): the code a
+  // client branches on, what it means, and what to do about it. {placeholders} in the guidance are values the
+  // error result fills in, shown as code.
+  var ERRORS_META_KEY = 'hlibz/errors';
+  function errorsBlock(errors) {
+    if (!Array.isArray(errors) || !errors.length) return null;
+    return [el('h4', null, 'Errors', el('small', { text: 'isError' })), el('div', { class: 'props errors' }, errors.map(function (e) {
+      return el('div', { class: 'prop' },
+        el('div', { class: 'prop-head' }, el('span', { class: 'prop-name', text: e.code })),
+        mdEl('div', 'prop-desc', e.description),
+        e.guidance ? mdEl('div', 'prop-desc guidance', '**Guidance:** ' + String(e.guidance).replace(/\{(\w+)\}/g, '`{$1}`')) : null);
+    }))];
   }
 
   function fmtBytes(n) { return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1).replace(/\.0$/, '') + ' KB' : (n / 1048576).toFixed(1).replace(/\.0$/, '') + ' MB'; }
